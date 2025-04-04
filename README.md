@@ -48,12 +48,24 @@ flutter run
 ```
 ---
 ## 🧱 Folder Structure
-lib/
-├── models/              # Hive models: Task, Transaction, UserSettings
-├── pages/               # Modular pages: home_page.dart, finance_page.dart, tasks_page.dart, profile_page.dart
-├── widgets/             # Reusable UI components (planned)
-└── main.dart            # Entry point with routing & Hive setup
 
+```bash
+lib/
+├── main.dart – App entry point
+├── models/ – Hive models (Task, Transaction, User Settings)
+│   ├── task.dart
+│   ├── transaction.dart
+│   └── user_settings.dart
+├── pages/ – Main screens of the app
+│   ├── home_page.dart
+│   ├── finance_page.dart
+│   ├── tasks_page.dart
+│   └── profile_page.dart
+├── widgets/ – Reusable UI components (optional)
+│   └── balance_card.dart
+├── utils/ – Utility functions (optional)
+│   └── formatters.dart
+```
 
 ## 📝 Roadmap
 
