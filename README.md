@@ -45,3 +45,35 @@ git clone git@github.com:siva-sudhan/Orgo.git
 cd Orgo
 flutter pub get
 flutter run
+```
+---
+## 🧱 Folder Structure
+lib/
+├── models/              # Hive models: Task, Transaction, UserSettings
+├── pages/               # Modular pages: home_page.dart, finance_page.dart, tasks_page.dart, profile_page.dart
+├── widgets/             # Reusable UI components (planned)
+└── main.dart            # Entry point with routing & Hive setup
+
+
+## 📝 Roadmap
+
+ - Add pie chart analytics on Home
+ - Gamify task streaks
+ - Add filters/sort options in Finance
+ - Backup and sync across devices
+ - Evolve into AI-powered social productivity platform ✨
+
+---
+
+## 🙌 Contributing
+Currently a solo weekend project. Contributions and ideas are welcome!
+Submit an issue or pull request to get started.
+
+---
+
+## 📄 License
+MIT License
+
+---
+
+✨Made with Flutter by Siva Sudhan
