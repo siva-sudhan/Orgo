@@ -4,6 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/user_settings.dart';
 
@@ -35,14 +36,16 @@ class _ProfilePageState extends State<ProfilePage> {
     _nameController.text = settings.name;
   }
 
-  Future<void> _pickImage() async {
+  Future<void> _pickImage(ImageSource source) async {
     final ImagePicker picker = ImagePicker();
     final XFile? imageFile = await picker.pickImage(
-      source: ImageSource.gallery,
+      source: source,
+      preferredCameraDevice: CameraDevice.rear,
+      imageQuality: 100, // Ensures JPEG if camera is used
     );
-
+  
     if (imageFile != null) {
-      CroppedFile? croppedFile = await ImageCropper().cropImage(
+      final croppedFile = await ImageCropper().cropImage(
         sourcePath: imageFile.path,
         aspectRatio: CropAspectRatio(ratioX: 1, ratioY: 1),
         uiSettings: [
@@ -56,20 +59,85 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ],
       );
-
+  
       if (croppedFile != null) {
-        final appDir = await getApplicationDocumentsDirectory();
+        final cacheDir = await getTemporaryDirectory();
         final fileName =
             '${_nameController.text.trim().replaceAll(' ', '_')}_profile.jpg';
-        final savedImage =
-            await File(croppedFile.path).copy('${appDir.path}/$fileName');
-
-        setState(() {
-          settings.profileImagePath = savedImage.path;
-        });
-        settingsBox.put('user', settings);
+        final newImagePath = '${cacheDir.path}/$fileName';
+  
+        // Always compress and convert to JPEG
+        final compressed = await FlutterImageCompress.compressAndGetFile(
+          croppedFile.path,
+          newImagePath,
+          quality: 70,
+          format: CompressFormat.jpeg,
+        );
+  
+        if (compressed != null) {
+          // Delete old image if exists
+          if (settings.profileImagePath.isNotEmpty) {
+            final oldFile = File(settings.profileImagePath);
+            if (await oldFile.exists()) await oldFile.delete();
+          }
+  
+          setState(() {
+            settings.profileImagePath = compressed.path;
+          });
+          settingsBox.put('user', settings);
+        }
       }
     }
+  }
+
+  Future<void> _removeProfilePicture() async {
+    if (settings.profileImagePath.isNotEmpty) {
+      final file = File(settings.profileImagePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
+    setState(() => settings.profileImagePath = '');
+    settingsBox.put('user', settings);
+  }
+
+  Future<void> _showImageOptions() async {
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.photo_camera),
+              title: Text("Take a Picture"),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.photo_library),
+              title: Text("Choose from Gallery"),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.delete),
+              title: Text("Remove Profile Picture"),
+              onTap: () {
+                Navigator.pop(context);
+                _removeProfilePicture();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _pickDateOfBirth() async {
@@ -90,8 +158,7 @@ class _ProfilePageState extends State<ProfilePage> {
   int _calculateAge(DateTime dob) {
     final today = DateTime.now();
     int age = today.year - dob.year;
-    if (today.month < dob.month ||
-        (today.month == dob.month && today.day < dob.day)) {
+    if (today.month < dob.month || (today.month == dob.month && today.day < dob.day)) {
       age--;
     }
     return age;
@@ -107,30 +174,55 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final profileImagePath = settings.profileImagePath;
+    File? profileImageFile;
+    bool hasProfileImage = false;
+    if (profileImagePath.isNotEmpty) {
+      profileImageFile = File(profileImagePath);
+      hasProfileImage = profileImageFile.existsSync();
+    }
+
     return Scaffold(
       appBar: AppBar(title: Text("Profile")),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Profile Image
-            GestureDetector(
-              onTap: _pickImage,
-              child: CircleAvatar(
-                radius: 60,
-                backgroundImage: settings.profileImagePath.isNotEmpty
-                    ? FileImage(File(settings.profileImagePath))
-                    : null,
-                backgroundColor: Colors.deepPurple,
-                child: settings.profileImagePath.isEmpty
-                    ? Text(
-                        _nameController.text.isNotEmpty
-                            ? _nameController.text[0].toUpperCase()
-                            : '?',
-                        style: TextStyle(fontSize: 40, color: Colors.white),
-                      )
-                    : null,
-              ),
+            // Profile Image with Edit Icon
+            Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                GestureDetector(
+                  onTap: _showImageOptions,
+                  child: CircleAvatar(
+                    radius: 60,
+                    backgroundImage:
+                        hasProfileImage ? FileImage(profileImageFile!) : null,
+                    backgroundColor: Colors.deepPurple,
+                    child: !hasProfileImage
+                        ? Text(
+                            _nameController.text.isNotEmpty
+                                ? _nameController.text[0].toUpperCase()
+                                : '?',
+                            style: TextStyle(fontSize: 40, color: Colors.white),
+                          )
+                        : null,
+                  ),
+                ),
+                Positioned(
+                  bottom: 4,
+                  right: 4,
+                  child: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.white,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: Icon(Icons.edit, size: 18, color: Colors.deepPurple),
+                      onPressed: _showImageOptions,
+                    ),
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 16),
 

@@ -45,5 +45,16 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Camera Access -->
+	<key>NSCameraUsageDescription</key>
+	<string>We use the camera to let you take profile pictures.</string>
+
+	<!-- Photo Library Access -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>We need access to your photo library so you can select a profile picture.</string>
+
+	<!-- Photo Library Additions (optional, if saving to gallery) -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>We need to save images to your photo library.</string>
 </dict>
 </plist>

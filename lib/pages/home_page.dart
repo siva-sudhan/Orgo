@@ -63,38 +63,6 @@ class HomePage extends StatelessWidget {
                         ),
                         const SizedBox(height: 20),
 
-                        // XP Card
-                        Card(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 3,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text("Level: ${settings.level}", style: const TextStyle(fontSize: 18)),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: LinearProgressIndicator(
-                                        value: progress,
-                                        backgroundColor: Colors.grey[300],
-                                        valueColor: const AlwaysStoppedAnimation(Colors.green),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text("${(progress * 100).toStringAsFixed(0)}%"),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text("XP: ${settings.xp}"),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 20),
 
                         // Balance Card
                         Card(
@@ -147,6 +115,38 @@ class HomePage extends StatelessWidget {
                               ),
                             ),
                           ),
+
+                        const SizedBox(height: 20),
+                        // XP Card
+                        Card(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 3,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("Level: ${settings.level}", style: const TextStyle(fontSize: 18)),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: LinearProgressIndicator(
+                                        value: progress,
+                                        backgroundColor: Colors.grey[300],
+                                        valueColor: const AlwaysStoppedAnimation(Colors.green),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text("${(progress * 100).toStringAsFixed(0)}%"),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text("XP: ${settings.xp}"),
+                              ],
+                            ),
+                          ),
+                        ),
 
                         const SizedBox(height: 20),
 
