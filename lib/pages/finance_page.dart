@@ -18,7 +18,7 @@ class _FinancePageState extends State<FinancePage> {
   void initState() {
     super.initState();
     transactionBox = Hive.box<Transaction>('transactions');
-    settingsBox = Hive.box<UserSettings>('settings');
+    settingsBox = Hive.box<UserSettings>('settings'); // ✅ Ensure typed box
   }
 
   void _addTransaction() {
@@ -101,7 +101,7 @@ class _FinancePageState extends State<FinancePage> {
                       amountController.text.isNotEmpty) {
                     final newTransaction = Transaction(
                       title: titleController.text,
-                      amount: double.parse(amountController.text),
+                      amount: double.tryParse(amountController.text) ?? 0.0,
                       date: selectedDate,
                       category: category,
                       isIncome: isIncome,
@@ -128,10 +128,10 @@ class _FinancePageState extends State<FinancePage> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
+    return ValueListenableBuilder<Box<Transaction>>(
       valueListenable: transactionBox.listenable(),
-      builder: (context, Box<Transaction> box, _) {
-        final settings = settingsBox.get('user') ?? UserSettings();
+      builder: (context, box, _) {
+        final settings = settingsBox.get('user') ?? UserSettings(); // ✅ Safe fallback
         final currency = settings.currency.isNotEmpty ? settings.currency : '\$';
         final transactions = box.values.toList();
 

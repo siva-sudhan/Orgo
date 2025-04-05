@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'pages/home_page.dart';
 import 'pages/tasks_page.dart';
@@ -11,16 +13,28 @@ import 'package:intl/intl.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // final appDir = await getApplicationDocumentsDirectory();
+  //   // 🔥 Delete Hive boxes to remove corrupted or outdated data
+  // final hiveFiles = Directory(appDir.path)
+  //     .listSync()
+  //     .where((f) => f.path.endsWith('.hive'))
+  //     .toList();
+
+  // for (var file in hiveFiles) {
+  //   print('Deleting Hive file: ${file.path}');
+  //   await File(file.path).delete();
+  // }
+
   await Hive.initFlutter();
 
   // Register Hive adapters for both Tasks and Transactions
-  Hive.registerAdapter(TaskAdapter());
   Hive.registerAdapter(TransactionAdapter()); // Register Transaction model
+  Hive.registerAdapter(TaskAdapter());
   Hive.registerAdapter(UserSettingsAdapter());
 
   // Open Hive Boxes
-  await Hive.openBox<Task>('tasks');
   await Hive.openBox<Transaction>('transactions'); // Open Transaction box
+  await Hive.openBox<Task>('tasks');
   await Hive.openBox<UserSettings>('settings');
 
   runApp(OrgoApp());
