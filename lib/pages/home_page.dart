@@ -25,6 +25,8 @@ class HomePage extends StatelessWidget {
         final settings = settingsBox.get('user') ?? UserSettings();
         final userName = settings.name.isNotEmpty ? settings.name : 'Friend';
         final currency = settings.currency;
+        final streak = settings.taskStreak;
+        final dateFormat = settings.dateTimeFormat;
 
         return ValueListenableBuilder<Box<Transaction>>(
           valueListenable: Hive.box<Transaction>('transactions').listenable(),
@@ -36,7 +38,8 @@ class HomePage extends StatelessWidget {
             for (var tx in transactions) {
               balance += tx.isIncome ? tx.amount : -tx.amount;
               if (!tx.isIncome) {
-                categoryMap[tx.category] = (categoryMap[tx.category] ?? 0) + tx.amount;
+                categoryMap[tx.category] =
+                    (categoryMap[tx.category] ?? 0) + tx.amount;
               }
             }
 
@@ -44,7 +47,8 @@ class HomePage extends StatelessWidget {
               valueListenable: Hive.box<Task>('tasks').listenable(),
               builder: (context, taskBox, _) {
                 final tasks = taskBox.values.toList();
-                int completedTasks = tasks.where((task) => task.completed).length;
+                int completedTasks =
+                    tasks.where((task) => task.completed).length;
                 int totalTasks = tasks.length;
 
                 double progress = settings.xp / (settings.level * 100);
@@ -57,36 +61,63 @@ class HomePage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // 👋 Greeting
                         Text(
                           "${getGreeting()}, $userName 👋",
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 8),
 
+                        // 🔥 Task Streak Display
+                        if (streak > 0) ...[
+                          Row(
+                            children: [
+                              const Icon(Icons.local_fire_department,
+                                  color: Colors.orange, size: 28),
+                              const SizedBox(width: 8),
+                              Text(
+                                "$streak-Day Streak",
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                        ],
 
-                        // Balance Card
+                        // 💰 Balance Card
                         Card(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
                           elevation: 3,
                           child: ListTile(
-                            title: const Text("Total Balance", style: TextStyle(fontSize: 18)),
+                            title: const Text("Total Balance",
+                                style: TextStyle(fontSize: 18)),
                             subtitle: Text(
                               "$currency${balance.toStringAsFixed(2)}",
                               style: TextStyle(
                                 fontSize: 22,
-                                color: balance >= 0 ? Colors.green : Colors.red,
+                                color: balance >= 0
+                                    ? Colors.green
+                                    : Colors.red,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 20),
 
-                        // Pie Chart
+                        // 📊 Pie Chart
                         if (categoryMap.isNotEmpty)
                           Card(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
                             elevation: 3,
                             child: Padding(
                               padding: const EdgeInsets.all(16.0),
@@ -94,14 +125,18 @@ class HomePage extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text("Spending by Category",
-                                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                                      style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 10),
                                   PieChart(
                                     dataMap: categoryMap,
-                                    animationDuration: const Duration(milliseconds: 800),
+                                    animationDuration:
+                                        const Duration(milliseconds: 800),
                                     chartType: ChartType.ring,
-                                    chartValuesOptions: const ChartValuesOptions(
-                                        showChartValuesInPercentage: true),
+                                    chartValuesOptions:
+                                        const ChartValuesOptions(
+                                            showChartValuesInPercentage: true),
                                     colorList: [
                                       Colors.blue,
                                       Colors.orange,
@@ -115,18 +150,20 @@ class HomePage extends StatelessWidget {
                               ),
                             ),
                           ),
-
                         const SizedBox(height: 20),
-                        // XP Card
+
+                        // 🧬 XP Card
                         Card(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
                           elevation: 3,
                           child: Padding(
                             padding: const EdgeInsets.all(16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text("Level: ${settings.level}", style: const TextStyle(fontSize: 18)),
+                                Text("Level: ${settings.level}",
+                                    style: const TextStyle(fontSize: 18)),
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
@@ -134,11 +171,14 @@ class HomePage extends StatelessWidget {
                                       child: LinearProgressIndicator(
                                         value: progress,
                                         backgroundColor: Colors.grey[300],
-                                        valueColor: const AlwaysStoppedAnimation(Colors.green),
+                                        valueColor:
+                                            const AlwaysStoppedAnimation(
+                                                Colors.green),
                                       ),
                                     ),
                                     const SizedBox(width: 12),
-                                    Text("${(progress * 100).toStringAsFixed(0)}%"),
+                                    Text(
+                                        "${(progress * 100).toStringAsFixed(0)}%"),
                                   ],
                                 ),
                                 const SizedBox(height: 8),
@@ -147,12 +187,12 @@ class HomePage extends StatelessWidget {
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 20),
 
-                        // Tasks Overview
+                        // ✅ Tasks Overview
                         Card(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
                           elevation: 3,
                           child: ListTile(
                             title: const Text("Tasks Overview"),
@@ -160,10 +200,12 @@ class HomePage extends StatelessWidget {
                               "$completedTasks of $totalTasks tasks completed",
                               style: const TextStyle(fontSize: 16),
                             ),
-                            trailing: const Icon(Icons.task_alt, color: Colors.deepPurple),
+                            trailing: const Icon(Icons.task_alt,
+                                color: Colors.deepPurple),
                           ),
                         ),
 
+                        // 💤 Empty State
                         if (transactions.isEmpty && tasks.isEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 30),

@@ -45,6 +45,15 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>This identifier will be used to deliver notifications.</string>
+	<key>UNUserNotificationCenter</key>
+	<true/>
 	<!-- Camera Access -->
 	<key>NSCameraUsageDescription</key>
 	<string>We use the camera to let you take profile pictures.</string>

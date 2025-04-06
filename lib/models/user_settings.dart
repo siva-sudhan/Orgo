@@ -1,6 +1,6 @@
 import 'package:hive/hive.dart';
 
-part 'user_settings.g.dart'; // Make sure this is correct
+part 'user_settings.g.dart';
 
 @HiveType(typeId: 2)
 class UserSettings extends HiveObject {
@@ -28,6 +28,12 @@ class UserSettings extends HiveObject {
   @HiveField(7)
   int level;
 
+  @HiveField(8)
+  int taskStreak; // 🔥 Global streak counter
+
+  @HiveField(9)
+  DateTime? lastTaskCompletedAt; // 🕒 To track when last task was completed
+
   UserSettings({
     this.name = '',
     this.currency = '\$',
@@ -37,5 +43,7 @@ class UserSettings extends HiveObject {
     this.dateTimeFormat = 'dd MMM yy',
     this.xp = 0,
     this.level = 1,
+    this.taskStreak = 0,
+    this.lastTaskCompletedAt,
   });
 }

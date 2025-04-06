@@ -25,13 +25,15 @@ class UserSettingsAdapter extends TypeAdapter<UserSettings> {
       dateTimeFormat: fields[5] as String,
       xp: fields[6] as int,
       level: fields[7] as int,
+      taskStreak: fields[8] as int,
+      lastTaskCompletedAt: fields[9] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, UserSettings obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.name)
       ..writeByte(1)
@@ -47,7 +49,11 @@ class UserSettingsAdapter extends TypeAdapter<UserSettings> {
       ..writeByte(6)
       ..write(obj.xp)
       ..writeByte(7)
-      ..write(obj.level);
+      ..write(obj.level)
+      ..writeByte(8)
+      ..write(obj.taskStreak)
+      ..writeByte(9)
+      ..write(obj.lastTaskCompletedAt);
   }
 
   @override

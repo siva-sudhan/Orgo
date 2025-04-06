@@ -9,38 +9,43 @@ import 'pages/profile_page.dart';
 import 'models/task.dart';
 import 'models/transaction.dart';
 import 'models/user_settings.dart';
+import 'services/notification_service.dart'; // ✅ Local notification support
 import 'package:intl/intl.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // final appDir = await getApplicationDocumentsDirectory();
-  //   // 🔥 Delete Hive boxes to remove corrupted or outdated data
-  // final hiveFiles = Directory(appDir.path)
-  //     .listSync()
-  //     .where((f) => f.path.endsWith('.hive'))
-  //     .toList();
+  //🧠 Uncomment below if you need to wipe Hive data during development
+  final appDir = await getApplicationDocumentsDirectory();
+  final hiveFiles = Directory(appDir.path)
+      .listSync()
+      .where((f) => f.path.endsWith('.hive'))
+      .toList();
+  for (var file in hiveFiles) {
+    print('Deleting Hive file: ${file.path}');
+    await File(file.path).delete();
+  }
 
-  // for (var file in hiveFiles) {
-  //   print('Deleting Hive file: ${file.path}');
-  //   await File(file.path).delete();
-  // }
-
+  // ✅ Initialize Hive and register adapters
   await Hive.initFlutter();
-
-  // Register Hive adapters for both Tasks and Transactions
-  Hive.registerAdapter(TransactionAdapter()); // Register Transaction model
+  Hive.registerAdapter(TransactionAdapter());
   Hive.registerAdapter(TaskAdapter());
   Hive.registerAdapter(UserSettingsAdapter());
 
-  // Open Hive Boxes
-  await Hive.openBox<Transaction>('transactions'); // Open Transaction box
+  // ✅ Open Hive boxes
+  await Hive.openBox<Transaction>('transactions');
   await Hive.openBox<Task>('tasks');
   await Hive.openBox<UserSettings>('settings');
 
-  runApp(OrgoApp());
+  // ✅ Initialize local notifications
+  await NotificationService.initialize();
+  await NotificationService.requestPermission();
+
+  runApp(const OrgoApp());
 }
 
 class OrgoApp extends StatelessWidget {
+  const OrgoApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -48,14 +53,16 @@ class OrgoApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.deepPurple,
       ),
-      home: MainNavigation(),
+      home: const MainNavigation(),
     );
   }
 }
 
 class MainNavigation extends StatefulWidget {
+  const MainNavigation({super.key});
+
   @override
-  _MainNavigationState createState() => _MainNavigationState();
+  State<MainNavigation> createState() => _MainNavigationState();
 }
 
 class _MainNavigationState extends State<MainNavigation> {
@@ -78,7 +85,7 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Orgo'),
+        title: const Text('Orgo'),
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
@@ -108,4 +115,3 @@ class _MainNavigationState extends State<MainNavigation> {
     );
   }
 }
-

@@ -24,6 +24,8 @@ class _FinancePageState extends State<FinancePage> {
   void _addTransaction() {
     final titleController = TextEditingController();
     final amountController = TextEditingController();
+    final settings = settingsBox.get('user') ?? UserSettings(); // ✅ Safe fallback
+    final dateFormat = settings.dateTimeFormat.isNotEmpty ? settings.dateTimeFormat : 'dd MMM yy';
     DateTime selectedDate = DateTime.now();
     String category = "General";
     bool isIncome = false;
@@ -75,7 +77,7 @@ class _FinancePageState extends State<FinancePage> {
                     ],
                   ),
                   TextButton(
-                    child: Text("Pick Date: ${DateFormat('dd MMM yyyy').format(selectedDate)}"),
+                    child: Text("Pick Date: ${DateFormat(dateFormat).format(selectedDate)}"),
                     onPressed: () async {
                       final picked = await showDatePicker(
                         context: context,
@@ -132,6 +134,7 @@ class _FinancePageState extends State<FinancePage> {
       valueListenable: transactionBox.listenable(),
       builder: (context, box, _) {
         final settings = settingsBox.get('user') ?? UserSettings(); // ✅ Safe fallback
+        final dateFormat = settings.dateTimeFormat.isNotEmpty ? settings.dateTimeFormat : 'dd MMM yy';
         final currency = settings.currency.isNotEmpty ? settings.currency : '\$';
         final transactions = box.values.toList();
 
@@ -172,7 +175,7 @@ class _FinancePageState extends State<FinancePage> {
                             child: ListTile(
                               title: Text(tx.title),
                               subtitle: Text(
-                                  "${tx.category} • ${DateFormat('dd MMM yyyy').format(tx.date)}"),
+                                  "${tx.category} • ${DateFormat(dateFormat).format(tx.date)}"),
                               trailing: Text(
                                 "${tx.isIncome ? '+' : '-'}$currency${tx.amount.toStringAsFixed(2)}",
                                 style: TextStyle(
