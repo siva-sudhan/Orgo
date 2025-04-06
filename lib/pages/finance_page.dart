@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
-
 import '../models/transaction.dart';
 import '../models/user_settings.dart';
 
@@ -14,28 +13,100 @@ class _FinancePageState extends State<FinancePage> {
   late Box<Transaction> transactionBox;
   late Box<UserSettings> settingsBox;
 
+  List<String> defaultCategories = ["General", "Food", "Transport", "Shopping", "Bills", "Other"];
+  List<String> customCategories = [];
+
   @override
   void initState() {
     super.initState();
     transactionBox = Hive.box<Transaction>('transactions');
-    settingsBox = Hive.box<UserSettings>('settings'); // ✅ Ensure typed box
+    settingsBox = Hive.box<UserSettings>('settings');
+    customCategories = (settingsBox.get('user')?.customCategories ?? []).cast<String>();
   }
 
-  void _addTransaction() {
-    final titleController = TextEditingController();
-    final amountController = TextEditingController();
-    final settings = settingsBox.get('user') ?? UserSettings(); // ✅ Safe fallback
+  void _addCustomCategoryDialog() {
+    final categoryController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text("Add Custom Category"),
+        content: TextField(
+          controller: categoryController,
+          decoration: InputDecoration(hintText: "Enter category name"),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              final cat = categoryController.text.trim();
+              if (cat.isNotEmpty && !customCategories.contains(cat)) {
+                setState(() {
+                  customCategories.add(cat);
+                });
+                final updated = settingsBox.get('user')!;
+                updated.customCategories = customCategories;
+                updated.save();
+              }
+              Navigator.pop(context);
+            },
+            child: Text("Add"),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _setLimitForCategory(String category) {
+    final limitController = TextEditingController();
+    final currentLimit = settingsBox.get('user')?.spendingLimits[category];
+    if (currentLimit != null) {
+      limitController.text = currentLimit.toString();
+    }
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text("Set Limit for $category"),
+        content: TextField(
+          controller: limitController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(hintText: "Enter limit amount"),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              final val = double.tryParse(limitController.text.trim());
+              if (val != null) {
+                final updated = settingsBox.get('user')!;
+                updated.spendingLimits[category] = val;
+                updated.save();
+              }
+              Navigator.pop(context);
+            },
+            child: Text("Set"),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _addOrEditTransaction({Transaction? transaction, int? index}) {
+    final titleController = TextEditingController(text: transaction?.title ?? '');
+    final amountController =
+        TextEditingController(text: transaction != null ? transaction.amount.toString() : '');
+    final settings = settingsBox.get('user') ?? UserSettings();
     final dateFormat = settings.dateTimeFormat.isNotEmpty ? settings.dateTimeFormat : 'dd MMM yy';
-    DateTime selectedDate = DateTime.now();
-    String category = "General";
-    bool isIncome = false;
+    DateTime selectedDate = transaction?.date ?? DateTime.now();
+    String category = transaction?.category ?? "General";
+    bool isIncome = transaction?.isIncome ?? false;
+
+    final allCategories = [...defaultCategories, ...customCategories];
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(builder: (context, setState) {
           return AlertDialog(
-            title: Text("Add Transaction"),
+            title: Text(transaction == null ? "Add Transaction" : "Edit Transaction"),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -56,24 +127,29 @@ class _FinancePageState extends State<FinancePage> {
                         category = newValue!;
                       });
                     },
-                    items: ["General", "Food", "Transport", "Shopping", "Bills", "Other"]
-                        .map((cat) => DropdownMenuItem(
-                              value: cat,
-                              child: Text(cat),
-                            ))
+                    items: allCategories
+                        .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
                         .toList(),
                   ),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      Checkbox(
-                        value: isIncome,
-                        onChanged: (val) {
-                          setState(() {
-                            isIncome = val!;
-                          });
-                        },
+                      ElevatedButton(
+                        onPressed: () => setState(() => isIncome = true),
+                        child: Text("Add Income"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isIncome ? Colors.green : Colors.grey[300],
+                          foregroundColor: isIncome ? Colors.white : Colors.black,
+                        ),
                       ),
-                      Text("Is Income?")
+                      ElevatedButton(
+                        onPressed: () => setState(() => isIncome = false),
+                        child: Text("Add Spending"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: !isIncome ? Colors.red : Colors.grey[300],
+                          foregroundColor: !isIncome ? Colors.white : Colors.black,
+                        ),
+                      ),
                     ],
                   ),
                   TextButton(
@@ -91,27 +167,64 @@ class _FinancePageState extends State<FinancePage> {
                         });
                       }
                     },
-                  )
+                  ),
                 ],
               ),
             ),
             actions: [
+              if (transaction != null)
+                TextButton(
+                  onPressed: () {
+                    transaction.delete();
+                    Navigator.of(context).pop();
+                  },
+                  child: Text("Delete", style: TextStyle(color: Colors.red)),
+                ),
               TextButton(
-                child: Text("Add"),
                 onPressed: () {
                   if (titleController.text.isNotEmpty &&
                       amountController.text.isNotEmpty) {
-                    final newTransaction = Transaction(
+                    final newTx = Transaction(
                       title: titleController.text,
                       amount: double.tryParse(amountController.text) ?? 0.0,
                       date: selectedDate,
                       category: category,
                       isIncome: isIncome,
                     );
-                    transactionBox.add(newTransaction);
+
+                    if (transaction != null && index != null) {
+                      transactionBox.putAt(index, newTx);
+                    } else {
+                      transactionBox.add(newTx);
+                    }
+
+                    if (!isIncome) {
+                      final settings = settingsBox.get('user')!;
+                      final categoryTotal = transactionBox.values
+                          .where((t) => !t.isIncome && t.category == category)
+                          .fold<double>(0.0, (sum, t) => sum + t.amount);
+                      final limit = settings.spendingLimits[category] ?? double.infinity;
+                      if (categoryTotal > limit) {
+                        showDialog(
+                          context: context,
+                          builder: (_) => AlertDialog(
+                            title: Text("Limit Exceeded"),
+                            content: Text("You have exceeded the limit for $category!"),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: Text("Okay"),
+                              )
+                            ],
+                          ),
+                        );
+                      }
+                    }
+
                     Navigator.of(context).pop();
                   }
                 },
+                child: Text(transaction == null ? "Add" : "Save"),
               )
             ],
           );
@@ -133,66 +246,106 @@ class _FinancePageState extends State<FinancePage> {
     return ValueListenableBuilder<Box<Transaction>>(
       valueListenable: transactionBox.listenable(),
       builder: (context, box, _) {
-        final settings = settingsBox.get('user') ?? UserSettings(); // ✅ Safe fallback
+        final settings = settingsBox.get('user') ?? UserSettings();
         final dateFormat = settings.dateTimeFormat.isNotEmpty ? settings.dateTimeFormat : 'dd MMM yy';
         final currency = settings.currency.isNotEmpty ? settings.currency : '\$';
+        final limits = settings.spendingLimits;
         final transactions = box.values.toList();
 
         final balance = calculateBalance(transactions);
 
+        final categoryTotals = <String, double>{};
+        for (var tx in transactions) {
+          if (!tx.isIncome) {
+            categoryTotals[tx.category] = (categoryTotals[tx.category] ?? 0) + tx.amount;
+          }
+        }
+
         return Scaffold(
+          appBar: AppBar(
+            title: Text("Finance"),
+            actions: [
+              IconButton(
+                icon: Icon(Icons.category),
+                onPressed: _addCustomCategoryDialog,
+              ),
+            ],
+          ),
           body: Column(
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 32, 16, 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Total Balance", style: TextStyle(fontSize: 18)),
-                    Text(
-                      "$currency${balance.toStringAsFixed(2)}",
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: balance >= 0 ? Colors.green : Colors.red,
-                      ),
-                    ),
+                    Text("Balance: $currency${balance.toStringAsFixed(2)}",
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: balance >= 0 ? Colors.green : Colors.red,
+                        )),
+                    ...categoryTotals.entries.map((entry) {
+                      final limit = limits[entry.key];
+                      if (limit != null && entry.value > limit) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 6.0),
+                          child: Row(
+                            children: [
+                              Icon(Icons.warning, color: Colors.red, size: 20),
+                              SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  "${entry.key} spending exceeded! Limit: $currency${limit.toStringAsFixed(2)} | Used: $currency${entry.value.toStringAsFixed(2)}",
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      return SizedBox.shrink();
+                    }),
                   ],
                 ),
               ),
               Expanded(
-                child: transactions.isEmpty
-                    ? Center(child: Text("No transactions yet"))
-                    : ListView.builder(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: transactions.length,
-                        itemBuilder: (context, index) {
-                          final tx = transactions[transactions.length - 1 - index];
-                          return Card(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            elevation: 2,
-                            margin: EdgeInsets.only(bottom: 12),
-                            child: ListTile(
-                              title: Text(tx.title),
-                              subtitle: Text(
-                                  "${tx.category} • ${DateFormat(dateFormat).format(tx.date)}"),
-                              trailing: Text(
-                                "${tx.isIncome ? '+' : '-'}$currency${tx.amount.toStringAsFixed(2)}",
-                                style: TextStyle(
-                                  color: tx.isIncome ? Colors.green : Colors.red,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
+                child: ListView.builder(
+                  itemCount: transactions.length,
+                  itemBuilder: (context, index) {
+                    final tx = transactions[index];
+                    return GestureDetector(
+                      onTap: () => _addOrEditTransaction(transaction: tx, index: index),
+                      onLongPress: () {
+                        if (!tx.isIncome) _setLimitForCategory(tx.category);
+                      },
+                      child: Card(
+                        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: tx.isIncome ? Colors.green : Colors.red,
+                            child: Icon(tx.isIncome ? Icons.arrow_downward : Icons.arrow_upward,
+                                color: Colors.white),
+                          ),
+                          title: Text(tx.title),
+                          subtitle: Text(
+                            "${DateFormat(dateFormat).format(tx.date)} • ${tx.category}",
+                          ),
+                          trailing: Text(
+                            "${tx.isIncome ? '+' : '-'}$currency${tx.amount.toStringAsFixed(2)}",
+                            style: TextStyle(
+                                color: tx.isIncome ? Colors.green : Colors.red,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
                       ),
+                    );
+                  },
+                ),
               ),
             ],
           ),
           floatingActionButton: FloatingActionButton(
-            onPressed: _addTransaction,
-            backgroundColor: Colors.deepPurple,
+            onPressed: () => _addOrEditTransaction(),
             child: Icon(Icons.add),
           ),
         );

@@ -15,15 +15,15 @@ import 'package:intl/intl.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   //🧠 Uncomment below if you need to wipe Hive data during development
-  final appDir = await getApplicationDocumentsDirectory();
-  final hiveFiles = Directory(appDir.path)
-      .listSync()
-      .where((f) => f.path.endsWith('.hive'))
-      .toList();
-  for (var file in hiveFiles) {
-    print('Deleting Hive file: ${file.path}');
-    await File(file.path).delete();
-  }
+  // final appDir = await getApplicationDocumentsDirectory();
+  // final hiveFiles = Directory(appDir.path)
+  //     .listSync()
+  //     .where((f) => f.path.endsWith('.hive'))
+  //     .toList();
+  // for (var file in hiveFiles) {
+  //   print('Deleting Hive file: ${file.path}');
+  //   await File(file.path).delete();
+  // }
 
   // ✅ Initialize Hive and register adapters
   await Hive.initFlutter();

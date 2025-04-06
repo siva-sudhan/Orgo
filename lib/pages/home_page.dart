@@ -27,6 +27,7 @@ class HomePage extends StatelessWidget {
         final currency = settings.currency;
         final streak = settings.taskStreak;
         final dateFormat = settings.dateTimeFormat;
+        final limits = settings.spendingLimits;
 
         return ValueListenableBuilder<Box<Transaction>>(
           valueListenable: Hive.box<Transaction>('transactions').listenable(),
@@ -61,7 +62,6 @@ class HomePage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 👋 Greeting
                         Text(
                           "${getGreeting()}, $userName 👋",
                           style: const TextStyle(
@@ -71,7 +71,6 @@ class HomePage extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
 
-                        // 🔥 Task Streak Display
                         if (streak > 0) ...[
                           Row(
                             children: [
@@ -91,7 +90,6 @@ class HomePage extends StatelessWidget {
                           const SizedBox(height: 20),
                         ],
 
-                        // 💰 Balance Card
                         Card(
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16)),
@@ -103,9 +101,8 @@ class HomePage extends StatelessWidget {
                               "$currency${balance.toStringAsFixed(2)}",
                               style: TextStyle(
                                 fontSize: 22,
-                                color: balance >= 0
-                                    ? Colors.green
-                                    : Colors.red,
+                                color:
+                                    balance >= 0 ? Colors.green : Colors.red,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -113,7 +110,6 @@ class HomePage extends StatelessWidget {
                         ),
                         const SizedBox(height: 20),
 
-                        // 📊 Pie Chart
                         if (categoryMap.isNotEmpty)
                           Card(
                             shape: RoundedRectangleBorder(
@@ -146,13 +142,40 @@ class HomePage extends StatelessWidget {
                                       Colors.brown,
                                     ],
                                   ),
+                                  const SizedBox(height: 10),
+
+                                  // 🛑 Spending Limit Warnings
+                                  ...categoryMap.entries.map((entry) {
+                                    final limit = limits[entry.key];
+                                    if (limit != null &&
+                                        entry.value > limit) {
+                                      return Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 6.0),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.warning,
+                                                color: Colors.red, size: 20),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                "${entry.key} spending exceeded! Limit: $currency${limit.toStringAsFixed(2)} | Used: $currency${entry.value.toStringAsFixed(2)}",
+                                                style: const TextStyle(
+                                                    color: Colors.red),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                    return const SizedBox.shrink();
+                                  }),
                                 ],
                               ),
                             ),
                           ),
                         const SizedBox(height: 20),
 
-                        // 🧬 XP Card
                         Card(
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16)),
@@ -189,7 +212,6 @@ class HomePage extends StatelessWidget {
                         ),
                         const SizedBox(height: 20),
 
-                        // ✅ Tasks Overview
                         Card(
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16)),
@@ -205,7 +227,6 @@ class HomePage extends StatelessWidget {
                           ),
                         ),
 
-                        // 💤 Empty State
                         if (transactions.isEmpty && tasks.isEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 30),

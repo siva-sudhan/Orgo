@@ -29,10 +29,16 @@ class UserSettings extends HiveObject {
   int level;
 
   @HiveField(8)
-  int taskStreak; // 🔥 Global streak counter
+  int taskStreak;
 
   @HiveField(9)
-  DateTime? lastTaskCompletedAt; // 🕒 To track when last task was completed
+  DateTime? lastTaskCompletedAt;
+
+  @HiveField(10)
+  List<String> customCategories; // 🆕 Custom user-defined categories
+
+  @HiveField(11)
+  Map<String, double> spendingLimits; // 🆕 Category spending limits
 
   UserSettings({
     this.name = '',
@@ -45,5 +51,7 @@ class UserSettings extends HiveObject {
     this.level = 1,
     this.taskStreak = 0,
     this.lastTaskCompletedAt,
+    this.customCategories = const [],
+    this.spendingLimits = const {},
   });
 }
