@@ -118,4 +118,30 @@ class GamificationService {
     settings.lastTaskCompletedAt = currentDate;
     settings.save();
   }
+  /// Call this during app startup to reset streak if a day was missed
+  /// Returns true if streak was reset
+  static bool checkAndResetDailyStreak() {
+    final settingsBox = Hive.box<UserSettings>('settings');
+    final settings = settingsBox.get('user') ?? UserSettings();
+  
+    final today = DateTime.now();
+    final todayDateOnly = DateTime(today.year, today.month, today.day);
+    final last = settings.lastTaskCompletedAt;
+    final lastDateOnly = last != null
+        ? DateTime(last.year, last.month, last.day)
+        : null;
+  
+    if (lastDateOnly == null) return false;
+  
+    final diff = todayDateOnly.difference(lastDateOnly).inDays;
+  
+    if (diff > 1) {
+      // ❌ Missed a day, reset streak
+      settings.taskStreak = 0;
+      settingsBox.put('user', settings);
+      return true; // indicate streak was reset
+    }
+  
+    return false;
+  }
 }

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -6,6 +7,7 @@ import 'package:pie_chart/pie_chart.dart';
 import '../models/transaction.dart';
 import '../models/task.dart';
 import '../models/user_settings.dart';
+import '../widgets/level_progress_card.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -24,6 +26,9 @@ class HomePage extends StatelessWidget {
       builder: (context, settingsBox, _) {
         final settings = settingsBox.get('user') ?? UserSettings();
         final userName = settings.name.isNotEmpty ? settings.name : 'Friend';
+        final profileImagePath = settings.profileImagePath;
+        final hasProfileImage = profileImagePath.isNotEmpty && File(profileImagePath).existsSync();
+        final profileImageFile = hasProfileImage ? File(profileImagePath) : null;
         final currency = settings.currency;
         final streak = settings.taskStreak;
         final dateFormat = settings.dateTimeFormat;
@@ -62,14 +67,32 @@ class HomePage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          "${getGreeting()}, $userName 👋",
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 22,
+                              backgroundImage: hasProfileImage ? FileImage(profileImageFile!) : null,
+                              backgroundColor: Colors.deepPurple,
+                              child: !hasProfileImage
+                                  ? Text(
+                                      userName[0].toUpperCase(),
+                                      style: const TextStyle(fontSize: 18, color: Colors.white),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                "${getGreeting()}, $userName 👋",
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 20),
 
                         if (streak > 0) ...[
                           Row(
@@ -176,40 +199,12 @@ class HomePage extends StatelessWidget {
                           ),
                         const SizedBox(height: 20),
 
-                        Card(
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
-                          elevation: 3,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text("Level: ${settings.level}",
-                                    style: const TextStyle(fontSize: 18)),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: LinearProgressIndicator(
-                                        value: progress,
-                                        backgroundColor: Colors.grey[300],
-                                        valueColor:
-                                            const AlwaysStoppedAnimation(
-                                                Colors.green),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                        "${(progress * 100).toStringAsFixed(0)}%"),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text("XP: ${settings.xp}"),
-                              ],
-                            ),
-                          ),
+                        LevelProgressCard(
+                          xp: settings.xp,
+                          level: settings.level,
+                          xpToNextLevel: settings.xp % 100,
                         ),
+
                         const SizedBox(height: 20),
 
                         Card(

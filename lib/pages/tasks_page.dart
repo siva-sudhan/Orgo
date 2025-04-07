@@ -141,6 +141,116 @@ class _TasksPageState extends State<TasksPage> {
     );
   }
 
+  void _editTask(Task task, String dateFormat) {
+    final titleController = TextEditingController(text: task.title);
+    DateTime dueDate = task.dueDate;
+    bool setReminder = false; // Optionally load this if reminder exists
+  
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: Text("Edit Task"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: titleController,
+                      decoration: InputDecoration(hintText: "Edit task title"),
+                    ),
+                    SizedBox(height: 10),
+                    TextButton(
+                      child: Text("Pick Due Date: ${DateFormat(dateFormat).format(dueDate)}"),
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: dueDate,
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) {
+                          setModalState(() {
+                            dueDate = DateTime(
+                              picked.year,
+                              picked.month,
+                              picked.day,
+                              dueDate.hour,
+                              dueDate.minute,
+                            );
+                          });
+                        }
+                      },
+                    ),
+                    TextButton(
+                      child: Text("Pick Due Time: ${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}"),
+                      onPressed: () async {
+                        final picked = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(dueDate),
+                        );
+                        if (picked != null) {
+                          setModalState(() {
+                            dueDate = DateTime(
+                              dueDate.year,
+                              dueDate.month,
+                              dueDate.day,
+                              picked.hour,
+                              picked.minute,
+                            );
+                          });
+                        }
+                      },
+                    ),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: setReminder,
+                          onChanged: (value) {
+                            setModalState(() {
+                              setReminder = value ?? false;
+                            });
+                          },
+                        ),
+                        Text("Update Reminder"),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    task.title = titleController.text;
+                    task.dueDate = dueDate;
+  
+                    await task.save();
+  
+                    if (setReminder) {
+                      bool granted = await NotificationService.requestPermission();
+                      if (granted) {
+                        NotificationService.scheduleNotification(
+                          id: task.key,
+                          title: "Task Reminder",
+                          body: task.title,
+                          scheduledTime: task.dueDate,
+                        );
+                      }
+                    }
+  
+                    Navigator.of(context).pop();
+                  },
+                  child: Text("Save Changes"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
   void _showCompletedTasks(List<Task> completedTasks, String dateFormat) {
     showModalBottomSheet(
       context: context,
@@ -184,16 +294,31 @@ class _TasksPageState extends State<TasksPage> {
     if (task.completed) return;
 
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
     final settingsBox = Hive.box<UserSettings>('settings');
     final settings = settingsBox.get('user') ?? UserSettings();
+
+    final lastCompletedDate = settings.lastTaskCompletedAt != null
+        ? DateTime(
+            settings.lastTaskCompletedAt!.year,
+            settings.lastTaskCompletedAt!.month,
+            settings.lastTaskCompletedAt!.day,
+          )
+        : null;
 
     task.completed = true;
     task.completedAt = now;
 
     GamificationService.evaluateTask(task);
-    settings.taskStreak += 1;
-    settings.xp += 10;
 
+    // ✅ Only increment streak if it's a new day
+    if (lastCompletedDate == null || lastCompletedDate.isBefore(today)) {
+      settings.taskStreak += 1;
+      settings.lastTaskCompletedAt = today;
+    }
+
+    settings.xp += 10;
     task.streakCount = settings.taskStreak;
 
     task.save();
@@ -307,7 +432,9 @@ class _TasksPageState extends State<TasksPage> {
                                     borderRadius: BorderRadius.circular(16),
                                   ),
                                   elevation: 3,
-                                  child: ListTile(
+                                  child: InkWell(
+                                    onTap: () => _editTask(task, dateFormat), // 👈 Add this
+                                    child: ListTile(
                                     leading: Checkbox(
                                       value: task.completed,
                                       onChanged: (_) => _completeTask(task),
@@ -322,14 +449,31 @@ class _TasksPageState extends State<TasksPage> {
                                         ),
                                         SizedBox(height: 4),
                                         Row(
-                                          children: List.generate(
-                                            3,
-                                            (index) => Icon(
-                                              index < task.stars ? Icons.star : Icons.star_border,
-                                              color: Colors.amber,
-                                              size: 20,
+                                          children: [
+                                            // Manually awarded stars
+                                            ...List.generate(
+                                              3,
+                                              (index) => Icon(
+                                                index < task.stars ? Icons.star : Icons.star_border,
+                                                color: Colors.amber,
+                                                size: 20,
+                                              ),
                                             ),
-                                          ),
+                                            // Auto stars (gray-colored)
+                                            if (task.autoStars > 0) ...[
+                                              SizedBox(width: 4),
+                                              Text("+"),
+                                              SizedBox(width: 2),
+                                              ...List.generate(
+                                                task.autoStars,
+                                                (index) => Icon(
+                                                  Icons.star,
+                                                  color: Colors.grey,
+                                                  size: 18,
+                                                ),
+                                              ),
+                                            ]
+                                          ],
                                         ),
                                         if (task.streakCount > 1)
                                           Row(
@@ -343,9 +487,10 @@ class _TasksPageState extends State<TasksPage> {
                                     ),
                                   ),
                                 ),
-                              );
-                            },
-                          ),
+                              ),
+                            );
+                          },
+                        ),
                   ),
                 ],
               ),

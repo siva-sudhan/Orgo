@@ -19,18 +19,19 @@ class TaskAdapter extends TypeAdapter<Task> {
     return Task(
       title: fields[0] as String,
       dueDate: fields[1] as DateTime,
-      stars: fields[2] as int,
+      stars: fields[2] == null ? 0 : fields[2] as int,
       completed: fields[3] == null ? false : fields[3] as bool,
       completedAt: fields[4] as DateTime?,
-      autoStars: fields[5] as int,
-      streakCount: fields[6] as int,
+      autoStars: fields[5] == null ? 0 : fields[5] as int,
+      streakCount: fields[6] == null ? 0 : fields[6] as int,
+      isRecurring: fields[7] == null ? false : fields[7] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, Task obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.title)
       ..writeByte(1)
@@ -44,7 +45,9 @@ class TaskAdapter extends TypeAdapter<Task> {
       ..writeByte(5)
       ..write(obj.autoStars)
       ..writeByte(6)
-      ..write(obj.streakCount);
+      ..write(obj.streakCount)
+      ..writeByte(7)
+      ..write(obj.isRecurring);
   }
 
   @override

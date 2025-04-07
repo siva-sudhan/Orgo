@@ -10,6 +10,7 @@ import 'models/task.dart';
 import 'models/transaction.dart';
 import 'models/user_settings.dart';
 import 'services/notification_service.dart'; // ✅ Local notification support
+import '../services/gamification_service.dart';
 import 'package:intl/intl.dart';
 
 void main() async {
@@ -39,12 +40,16 @@ void main() async {
   // ✅ Initialize local notifications
   await NotificationService.initialize();
   await NotificationService.requestPermission();
-
-  runApp(const OrgoApp());
+  
+  // 🔥 Check streak reset before app starts
+  final streakWasReset = GamificationService.checkAndResetDailyStreak();
+  
+  runApp(OrgoApp(streakReset: streakWasReset));
 }
 
 class OrgoApp extends StatelessWidget {
-  const OrgoApp({super.key});
+  final bool streakReset;
+  const OrgoApp({super.key, required this.streakReset});
 
   @override
   Widget build(BuildContext context) {
@@ -53,13 +58,14 @@ class OrgoApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.deepPurple,
       ),
-      home: const MainNavigation(),
+      home: MainNavigation(streakReset: streakReset),
     );
   }
 }
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({super.key});
+  final bool streakReset;
+  const MainNavigation({super.key, required this.streakReset});
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
@@ -74,6 +80,31 @@ class _MainNavigationState extends State<MainNavigation> {
     TasksPage(),
     ProfilePage(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.streakReset) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('🔥 Streak Broken'),
+            content: const Text(
+              'You missed a day, and your daily streak has been reset.\nStart again today!',
+            ),
+            actions: [
+              TextButton(
+                child: const Text('Got it!'),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        );
+      });
+    }
+  }
 
   void _onItemTapped(int index) {
     setState(() {
