@@ -1,8 +1,10 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/transaction.dart';
 import '../models/user_settings.dart';
+import 'package:flutter/services.dart';
 
 class FinancePage extends StatefulWidget {
   @override
@@ -12,9 +14,16 @@ class FinancePage extends StatefulWidget {
 class _FinancePageState extends State<FinancePage> {
   late Box<Transaction> transactionBox;
   late Box<UserSettings> settingsBox;
-
+  
   List<String> defaultCategories = ["General", "Food", "Transport", "Shopping", "Bills", "Other"];
   List<String> customCategories = [];
+  List<String> selectedCategories = [];
+  DateTime selectedDate = DateTime.now();
+  String? animatedAmountText;
+  Color animatedAmountColor = Colors.green;
+  bool animateUpward = true;
+  AudioPlayer audioPlayer = AudioPlayer();
+  bool showTotalBalance = false; // true = total balance, false = daily balance
 
   @override
   void initState() {
@@ -22,6 +31,21 @@ class _FinancePageState extends State<FinancePage> {
     transactionBox = Hive.box<Transaction>('transactions');
     settingsBox = Hive.box<UserSettings>('settings');
     customCategories = (settingsBox.get('user')?.customCategories ?? []).cast<String>();
+  }
+
+  void showTransactionFeedback(double amount, bool isIncome) async {
+    setState(() {
+      animatedAmountText =
+          isIncome ? "+₹${amount.toStringAsFixed(2)}" : "-₹${amount.toStringAsFixed(2)}";
+      animatedAmountColor = isIncome ? Colors.green : Colors.red;
+      animateUpward = isIncome;
+    });
+  
+    await Future.delayed(Duration(milliseconds: 100));
+    HapticFeedback.lightImpact();
+  
+    final soundPath = isIncome ? 'sounds/income.wav' : 'sounds/expense.wav';
+    await audioPlayer.play(AssetSource(soundPath));
   }
 
   void _addCustomCategoryDialog() {
@@ -87,6 +111,40 @@ class _FinancePageState extends State<FinancePage> {
         ],
       ),
     );
+  }
+
+  void _selectDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      helpText: 'Select Date',
+    );
+  
+    if (picked != null && picked != selectedDate) {
+      setState(() {
+        selectedDate = picked;
+      });
+    }
+  }
+  
+  void _goToToday() {
+    setState(() {
+      selectedDate = DateTime.now();
+    });
+  }
+  
+  void _goToPreviousDate() {
+    setState(() {
+      selectedDate = selectedDate.subtract(Duration(days: 1));
+    });
+  }
+  
+  void _goToNextDate() {
+    setState(() {
+      selectedDate = selectedDate.add(Duration(days: 1));
+    });
   }
 
   void _addOrEditTransaction({Transaction? transaction, int? index}) {
@@ -196,6 +254,7 @@ class _FinancePageState extends State<FinancePage> {
                       transactionBox.putAt(index, newTx);
                     } else {
                       transactionBox.add(newTx);
+                      showTransactionFeedback(newTx.amount, newTx.isIncome);
                     }
 
                     if (!isIncome) {
@@ -250,9 +309,16 @@ class _FinancePageState extends State<FinancePage> {
         final dateFormat = settings.dateTimeFormat.isNotEmpty ? settings.dateTimeFormat : 'dd MMM yy';
         final currency = settings.currency.isNotEmpty ? settings.currency : '\$';
         final limits = settings.spendingLimits;
-        final transactions = box.values.toList();
+        final allTransactions = box.values.toList();
+        final balance = calculateBalance(allTransactions);
 
-        final balance = calculateBalance(transactions);
+        // Transactions to show for selected date and filtered categories
+        final transactions = box.values.where((tx) {
+          final isSameDate = DateFormat('yyyy-MM-dd').format(tx.date) ==
+              DateFormat('yyyy-MM-dd').format(selectedDate);
+          final isInSelectedCategory = selectedCategories.isEmpty || selectedCategories.contains(tx.category);
+          return (showTotalBalance || isSameDate) && isInSelectedCategory;
+        }).toList();
 
         final categoryTotals = <String, double>{};
         for (var tx in transactions) {
@@ -274,72 +340,190 @@ class _FinancePageState extends State<FinancePage> {
           body: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 32, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 32, 16, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Balance: $currency${balance.toStringAsFixed(2)}",
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "Balance: $currency${balance.toStringAsFixed(2)}",
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: balance >= 0 ? Colors.green : Colors.red,
-                        )),
-                    ...categoryTotals.entries.map((entry) {
-                      final limit = limits[entry.key];
-                      if (limit != null && entry.value > limit) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 6.0),
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            Text("Today"),
+                            Switch(
+                              value: showTotalBalance,
+                              onChanged: (val) {
+                                setState(() {
+                                  showTotalBalance = val;
+                                });
+                              },
+                            ),
+                            Text("Total"),
+                          ],
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.arrow_left),
+                          onPressed: _goToPreviousDate,
+                        ),
+                        GestureDetector(
+                          onTap: () => _selectDate(context),
                           child: Row(
                             children: [
-                              Icon(Icons.warning, color: Colors.red, size: 20),
-                              SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  "${entry.key} spending exceeded! Limit: $currency${limit.toStringAsFixed(2)} | Used: $currency${entry.value.toStringAsFixed(2)}",
-                                  style: TextStyle(color: Colors.red),
+                              Text(
+                                DateFormat(dateFormat).format(selectedDate),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  decoration: TextDecoration.underline,
                                 ),
                               ),
+                              SizedBox(width: 8),
+                              Icon(Icons.calendar_today, size: 18),
                             ],
                           ),
-                        );
-                      }
-                      return SizedBox.shrink();
-                    }),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.arrow_right),
+                          onPressed: _goToNextDate,
+                        ),
+                        TextButton(
+                          onPressed: _goToToday,
+                          child: Text("Today"),
+                        ),
+                      ],
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 0),
+                      child: ExpansionTile(
+                        title: Text(
+                          selectedCategories.isEmpty
+                              ? "Filter by Categories"
+                              : "Filtered: ${selectedCategories.join(', ')}",
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        children: [
+                          Wrap(
+                            spacing: 10,
+                            children: [
+                              ...[...defaultCategories, ...customCategories].map((cat) {
+                                final isSelected = selectedCategories.contains(cat);
+                                return FilterChip(
+                                  label: Text(cat),
+                                  selected: isSelected,
+                                  onSelected: (bool selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        selectedCategories.add(cat);
+                                      } else {
+                                        selectedCategories.remove(cat);
+                                      }
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            ],
+                          ),
+                          SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              child: Text("Clear Filters"),
+                              onPressed: () {
+                                setState(() {
+                                  selectedCategories.clear();
+                                });
+                              },
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
               Expanded(
-                child: ListView.builder(
-                  itemCount: transactions.length,
-                  itemBuilder: (context, index) {
-                    final tx = transactions[index];
-                    return GestureDetector(
-                      onTap: () => _addOrEditTransaction(transaction: tx, index: index),
-                      onLongPress: () {
-                        if (!tx.isIncome) _setLimitForCategory(tx.category);
+                child: Stack(
+                  children: [
+                    ListView.builder(
+                      itemCount: transactions.length,
+                      itemBuilder: (context, index) {
+                        final tx = transactions[index];
+                        return GestureDetector(
+                          onTap: () => _addOrEditTransaction(transaction: tx, index: index),
+                          onLongPress: () {
+                            if (!tx.isIncome) _setLimitForCategory(tx.category);
+                          },
+                          child: Card(
+                            margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: tx.isIncome ? Colors.green : Colors.red,
+                                child: Icon(
+                                  tx.isIncome ? Icons.arrow_upward : Icons.arrow_downward,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              title: Text(tx.title),
+                              subtitle: Text(
+                                "${DateFormat(dateFormat).format(tx.date)} • ${tx.category}",
+                              ),
+                              trailing: Text(
+                                "${tx.isIncome ? '+' : '-'}$currency${tx.amount.toStringAsFixed(2)}",
+                                style: TextStyle(
+                                  color: tx.isIncome ? Colors.green : Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
                       },
-                      child: Card(
-                        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: tx.isIncome ? Colors.green : Colors.red,
-                            child: Icon(tx.isIncome ? Icons.arrow_downward : Icons.arrow_upward,
-                                color: Colors.white),
-                          ),
-                          title: Text(tx.title),
-                          subtitle: Text(
-                            "${DateFormat(dateFormat).format(tx.date)} • ${tx.category}",
-                          ),
-                          trailing: Text(
-                            "${tx.isIncome ? '+' : '-'}$currency${tx.amount.toStringAsFixed(2)}",
-                            style: TextStyle(
-                                color: tx.isIncome ? Colors.green : Colors.red,
-                                fontWeight: FontWeight.bold),
-                          ),
+                    ),
+                    if (animatedAmountText != null)
+                      Center(
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 1.0, end: 0.0),
+                          duration: Duration(seconds: 2),
+                          onEnd: () {
+                            setState(() {
+                              animatedAmountText = null;
+                            });
+                          },
+                          builder: (context, opacity, child) {
+                            return Opacity(
+                              opacity: opacity,
+                              child: Transform.translate(
+                                offset: animateUpward
+                                    ? Offset(0, -100 * (1 - opacity))
+                                    : Offset(0, 100 * (1 - opacity)),
+                                child: Text(
+                                  animatedAmountText!,
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
+                                    color: animatedAmountColor,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
-                    );
-                  },
+                  ],
                 ),
               ),
             ],

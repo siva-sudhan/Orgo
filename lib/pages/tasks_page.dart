@@ -144,7 +144,7 @@ class _TasksPageState extends State<TasksPage> {
   void _editTask(Task task, String dateFormat) {
     final titleController = TextEditingController(text: task.title);
     DateTime dueDate = task.dueDate;
-    bool setReminder = false; // Optionally load this if reminder exists
+    bool setReminder = true; // You can later persist this in the Task model if needed
   
     showDialog(
       context: context,
@@ -214,7 +214,7 @@ class _TasksPageState extends State<TasksPage> {
                             });
                           },
                         ),
-                        Text("Update Reminder"),
+                        Text("Set Reminder"),
                       ],
                     ),
                   ],
@@ -238,6 +238,9 @@ class _TasksPageState extends State<TasksPage> {
                           scheduledTime: task.dueDate,
                         );
                       }
+                    } else {
+                      // If unchecked, cancel the reminder
+                      NotificationService.cancelNotification(task.key);
                     }
   
                     Navigator.of(context).pop();
@@ -251,54 +254,103 @@ class _TasksPageState extends State<TasksPage> {
       },
     );
   }
+
   void _showCompletedTasks(List<Task> completedTasks, String dateFormat) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (context) {
-        return Column(
-          children: [
-            Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.all(16),
-                itemCount: completedTasks.length,
-                itemBuilder: (context, index) {
-                  final task = completedTasks[index];
-                  return ListTile(
-                    leading: Icon(Icons.check_circle, color: Colors.green),
-                    title: Text(task.title),
-                    subtitle: Text(
-                      "Completed: ${DateFormat(dateFormat).format(task.completedAt!)} • "
-                      "${'★' * task.stars}${'☆' * (3 - task.stars)}",
+        return DraggableScrollableSheet(
+          expand: false,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      controller: scrollController,
+                      itemCount: completedTasks.length,
+                      itemBuilder: (context, index) {
+                        final task = completedTasks[index];
+                        return ListTile(
+                          leading: Icon(Icons.check_circle, color: Colors.green),
+                          title: Text(task.title),
+                          subtitle: Text(
+                            "Completed: ${DateFormat(dateFormat).format(task.completedAt!)} • "
+                            "${'★' * task.stars}${'☆' * (3 - task.stars)}",
+                          ),
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: Text("Move Task Back"),
+                                content: Text("Do you want to move this task back to active list?"),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(),
+                                    child: Text("Cancel"),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                    onPressed: () async {
+                                      task.completed = false;
+                                      task.completedAt = null;
+                                      await task.save();
+                                      Navigator.of(context).pop(); // Close dialog
+                                      Navigator.of(context).pop(); // Close bottom sheet
+                                    },
+                                    child: Text("Move to Active"),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                  SizedBox(height: 12),
+                  if (completedTasks.isNotEmpty)
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      ),
+                      onPressed: () {
+                        for (var task in completedTasks) {
+                          task.delete();
+                        }
+                        Navigator.of(context).pop();
+                      },
+                      icon: Icon(Icons.delete),
+                      label: Text("Clear History"),
+                    ),
+                ],
               ),
-            ),
-            if (completedTasks.isNotEmpty)
-              TextButton(
-                onPressed: () {
-                  for (var task in completedTasks) {
-                    task.delete();
-                  }
-                  Navigator.of(context).pop();
-                },
-                child: Text("Clear History", style: TextStyle(color: Colors.red)),
-              ),
-          ],
+            );
+          },
         );
       },
     );
   }
 
-  void _completeTask(Task task) {
+  Future<void> _completeTask(Task task) async {
     if (task.completed) return;
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-
+    final yesterday = today.subtract(Duration(days: 1));
+    
     final settingsBox = Hive.box<UserSettings>('settings');
     final settings = settingsBox.get('user') ?? UserSettings();
-
+    
     final lastCompletedDate = settings.lastTaskCompletedAt != null
         ? DateTime(
             settings.lastTaskCompletedAt!.year,
@@ -306,23 +358,28 @@ class _TasksPageState extends State<TasksPage> {
             settings.lastTaskCompletedAt!.day,
           )
         : null;
-
+    
     task.completed = true;
     task.completedAt = now;
-
+    
     GamificationService.evaluateTask(task);
-
-    // ✅ Only increment streak if it's a new day
-    if (lastCompletedDate == null || lastCompletedDate.isBefore(today)) {
+    
+    if (lastCompletedDate == null) {
+      settings.taskStreak = 1;
+    } else if (lastCompletedDate == yesterday) {
       settings.taskStreak += 1;
-      settings.lastTaskCompletedAt = today;
+    } else if (lastCompletedDate != today) {
+      settings.taskStreak = 1;
     }
-
+    
+    // Update last completion date
+    settings.lastTaskCompletedAt = today;
     settings.xp += 10;
     task.streakCount = settings.taskStreak;
+    
+    await task.save();
+    await settings.save();
 
-    task.save();
-    settings.save();
   }
 
   @override

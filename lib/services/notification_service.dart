@@ -25,6 +25,10 @@ class NotificationService {
 
     await _notificationsPlugin.initialize(initSettings);
   }
+  /// Cancels a scheduled notification by ID
+  static Future<void> cancelNotification(int id) async {
+    await _notificationsPlugin.cancel(id);
+  }
 
   static Future<bool> requestPermission() async {
     final bool? result =

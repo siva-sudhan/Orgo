@@ -9,7 +9,7 @@ import 'pages/profile_page.dart';
 import 'models/task.dart';
 import 'models/transaction.dart';
 import 'models/user_settings.dart';
-import 'services/notification_service.dart'; // ✅ Local notification support
+import 'services/notification_service.dart';
 import '../services/gamification_service.dart';
 import 'package:intl/intl.dart';
 
