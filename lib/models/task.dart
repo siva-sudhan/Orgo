@@ -28,6 +28,15 @@ class Task extends HiveObject {
   @HiveField(7, defaultValue: false)
   bool isRecurring; // Needed for gamification logic
 
+  @HiveField(8, defaultValue: "low")
+  String priority; // "low", "medium", "high"
+
+  @HiveField(9, defaultValue: false)
+  bool isAcknowledged;
+
+  @HiveField(10)
+  DateTime? snoozedUntil;
+
   Task({
     required this.title,
     required this.dueDate,
@@ -37,5 +46,8 @@ class Task extends HiveObject {
     this.autoStars = 0,
     this.streakCount = 0,
     this.isRecurring = false,
+    this.priority = "low",
+    this.isAcknowledged = false,
+    this.snoozedUntil,
   });
 }

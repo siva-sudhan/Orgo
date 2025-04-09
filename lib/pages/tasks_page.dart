@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/services.dart'; // For Haptic Feedback
+import 'dart:async'; // For Timer
 
 import '../models/task.dart';
 import '../models/user_settings.dart';
@@ -16,6 +18,9 @@ class TasksPage extends StatefulWidget {
 class _TasksPageState extends State<TasksPage> {
   late Box<Task> taskBox;
   bool showStreakBanner = true;
+  // For high-priority subtle vibration animation
+  Offset _shakeOffset = Offset.zero;
+  Timer? _vibrationTimer;
 
   @override
   void initState() {
@@ -23,10 +28,31 @@ class _TasksPageState extends State<TasksPage> {
     taskBox = Hive.box<Task>('tasks');
   }
 
+  void _startVibrationEffect(Task task) {
+    if (!mounted || task.isAcknowledged || (task.snoozedUntil?.isAfter(DateTime.now()) ?? false)) return;
+  
+    _vibrationTimer?.cancel(); // cancel any existing timer
+  
+    _vibrationTimer = Timer.periodic(const Duration(milliseconds: 1500), (timer) async {
+      if (!mounted || task.isAcknowledged || task.snoozedUntil?.isAfter(DateTime.now()) == true) {
+        timer.cancel();
+        setState(() => _shakeOffset = Offset.zero);
+        return;
+      }
+  
+      // Heartbeat style: bump–bump–pause
+      HapticFeedback.lightImpact(); // bump 1
+      await Future.delayed(Duration(milliseconds: 100));
+      HapticFeedback.lightImpact(); // bump 2
+      // pause handled by timer interval
+    });
+  }
+
   void _addTask(String dateFormat) {
     final titleController = TextEditingController();
     DateTime dueDate = DateTime.now().add(Duration(hours: 1));
     bool setReminder = false;
+    String selectedPriority = 'low';
 
     showDialog(
       context: context,
@@ -43,7 +69,20 @@ class _TasksPageState extends State<TasksPage> {
                       controller: titleController,
                       decoration: InputDecoration(hintText: "Enter task title"),
                     ),
-                    SizedBox(height: 10),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: selectedPriority,
+                      decoration: InputDecoration(labelText: "Priority"),
+                      items: [
+                        DropdownMenuItem(value: 'low', child: Text("🟢 Low")),
+                        DropdownMenuItem(value: 'medium', child: Text("🟡 Medium")),
+                        DropdownMenuItem(value: 'high', child: Text("🔴 High")),
+                      ],
+                      onChanged: (value) {
+                        setModalState(() => selectedPriority = value ?? 'low');
+                      },
+                    ),
+                    const SizedBox(height: 10),
                     TextButton(
                       child: Text("Pick Due Date: ${DateFormat(dateFormat).format(dueDate)}"),
                       onPressed: () async {
@@ -55,13 +94,7 @@ class _TasksPageState extends State<TasksPage> {
                         );
                         if (picked != null) {
                           setModalState(() {
-                            dueDate = DateTime(
-                              picked.year,
-                              picked.month,
-                              picked.day,
-                              dueDate.hour,
-                              dueDate.minute,
-                            );
+                            dueDate = DateTime(picked.year, picked.month, picked.day, dueDate.hour, dueDate.minute);
                           });
                         }
                       },
@@ -75,13 +108,7 @@ class _TasksPageState extends State<TasksPage> {
                         );
                         if (picked != null) {
                           setModalState(() {
-                            dueDate = DateTime(
-                              dueDate.year,
-                              dueDate.month,
-                              dueDate.day,
-                              picked.hour,
-                              picked.minute,
-                            );
+                            dueDate = DateTime(dueDate.year, dueDate.month, dueDate.day, picked.hour, picked.minute);
                           });
                         }
                       },
@@ -91,9 +118,7 @@ class _TasksPageState extends State<TasksPage> {
                         Checkbox(
                           value: setReminder,
                           onChanged: (value) {
-                            setModalState(() {
-                              setReminder = value ?? false;
-                            });
+                            setModalState(() => setReminder = value ?? false);
                           },
                         ),
                         Text("Set Reminder"),
@@ -109,22 +134,34 @@ class _TasksPageState extends State<TasksPage> {
                       final newTask = Task(
                         title: titleController.text,
                         dueDate: dueDate,
-                        stars: 0,
-                        completed: false,
-                        completedAt: null,
-                        streakCount: 0,
+                        priority: selectedPriority,
                       );
                       final key = await taskBox.add(newTask);
 
                       if (setReminder) {
-                        bool granted = await NotificationService.requestPermission();
-                        if (granted) {
-                          NotificationService.scheduleNotification(
-                            id: key,
-                            title: "Task Reminder",
-                            body: newTask.title,
-                            scheduledTime: newTask.dueDate,
-                          );
+                        await NotificationService.requestPermission();
+
+                        // 🔔 Main reminder
+                        await NotificationService.schedulePriorityNotifications(
+                          taskId: key,
+                          title: "⏰ Task Reminder",
+                          body: newTask.title,
+                          dueDate: newTask.dueDate,
+                          priority: selectedPriority,
+                          allowRepeat: selectedPriority == 'high',
+                        );
+                        // 🔔 Pre-alert (15 mins before) for medium/high priority
+                        if (selectedPriority != 'low') {
+                          final preAlertTime = newTask.dueDate.subtract(Duration(minutes: 15));
+                          if (preAlertTime.isAfter(DateTime.now())) {
+                            await NotificationService.scheduleNotification(
+                              id: key + 100000, // offset for pre-alert
+                              title: "⚠️ Upcoming Task",
+                              body: "${newTask.title} is due soon!",
+                              scheduledTime: preAlertTime,
+                            );
+
+                          }
                         }
                       }
 
@@ -144,8 +181,9 @@ class _TasksPageState extends State<TasksPage> {
   void _editTask(Task task, String dateFormat) {
     final titleController = TextEditingController(text: task.title);
     DateTime dueDate = task.dueDate;
-    bool setReminder = true; // You can later persist this in the Task model if needed
-  
+    bool setReminder = true;
+    String selectedPriority = task.priority;
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -161,7 +199,20 @@ class _TasksPageState extends State<TasksPage> {
                       controller: titleController,
                       decoration: InputDecoration(hintText: "Edit task title"),
                     ),
-                    SizedBox(height: 10),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: selectedPriority,
+                      decoration: InputDecoration(labelText: "Priority"),
+                      items: [
+                        DropdownMenuItem(value: 'low', child: Text("🟢 Low")),
+                        DropdownMenuItem(value: 'medium', child: Text("🟡 Medium")),
+                        DropdownMenuItem(value: 'high', child: Text("🔴 High")),
+                      ],
+                      onChanged: (value) {
+                        setModalState(() => selectedPriority = value ?? 'low');
+                      },
+                    ),
+                    const SizedBox(height: 10),
                     TextButton(
                       child: Text("Pick Due Date: ${DateFormat(dateFormat).format(dueDate)}"),
                       onPressed: () async {
@@ -173,13 +224,7 @@ class _TasksPageState extends State<TasksPage> {
                         );
                         if (picked != null) {
                           setModalState(() {
-                            dueDate = DateTime(
-                              picked.year,
-                              picked.month,
-                              picked.day,
-                              dueDate.hour,
-                              dueDate.minute,
-                            );
+                            dueDate = DateTime(picked.year, picked.month, picked.day, dueDate.hour, dueDate.minute);
                           });
                         }
                       },
@@ -193,13 +238,7 @@ class _TasksPageState extends State<TasksPage> {
                         );
                         if (picked != null) {
                           setModalState(() {
-                            dueDate = DateTime(
-                              dueDate.year,
-                              dueDate.month,
-                              dueDate.day,
-                              picked.hour,
-                              picked.minute,
-                            );
+                            dueDate = DateTime(dueDate.year, dueDate.month, dueDate.day, picked.hour, picked.minute);
                           });
                         }
                       },
@@ -209,9 +248,7 @@ class _TasksPageState extends State<TasksPage> {
                         Checkbox(
                           value: setReminder,
                           onChanged: (value) {
-                            setModalState(() {
-                              setReminder = value ?? false;
-                            });
+                            setModalState(() => setReminder = value ?? false);
                           },
                         ),
                         Text("Set Reminder"),
@@ -225,24 +262,46 @@ class _TasksPageState extends State<TasksPage> {
                   onPressed: () async {
                     task.title = titleController.text;
                     task.dueDate = dueDate;
-  
+                    task.priority = selectedPriority;
+                    task.isAcknowledged = false;
+                    task.snoozedUntil = null;
+
                     await task.save();
-  
+
                     if (setReminder) {
-                      bool granted = await NotificationService.requestPermission();
-                      if (granted) {
-                        NotificationService.scheduleNotification(
-                          id: task.key,
-                          title: "Task Reminder",
-                          body: task.title,
-                          scheduledTime: task.dueDate,
-                        );
+                      await NotificationService.requestPermission();
+
+                      // Cancel old notifications
+                      await NotificationService.cancelNotification(task.key);
+                      await NotificationService.cancelNotification(task.key + 100000);
+
+                      // Schedule new main alert
+                      await NotificationService.schedulePriorityNotifications(
+                        taskId: task.key,
+                        title: "Task Reminder",
+                        body: task.title,
+                        dueDate: task.dueDate,
+                        priority: selectedPriority,
+                        allowRepeat: selectedPriority == 'high',
+                      );
+
+                      // Pre-alert for medium & high priority
+                      if (selectedPriority != 'low') {
+                        final preAlertTime = task.dueDate.subtract(Duration(minutes: 15));
+                        if (preAlertTime.isAfter(DateTime.now())) {
+                          await NotificationService.scheduleNotification(
+                            id: task.key + 100000,
+                            title: "⚠️ Upcoming Task",
+                            body: "${task.title} is due soon!",
+                            scheduledTime: preAlertTime,
+                          );
+                        }
                       }
                     } else {
-                      // If unchecked, cancel the reminder
-                      NotificationService.cancelNotification(task.key);
+                      await NotificationService.cancelNotification(task.key);
+                      await NotificationService.cancelNotification(task.key + 100000);
                     }
-  
+
                     Navigator.of(context).pop();
                   },
                   child: Text("Save Changes"),
@@ -474,6 +533,18 @@ class _TasksPageState extends State<TasksPage> {
                             itemCount: pendingTasks.length,
                             itemBuilder: (context, index) {
                               final task = pendingTasks[index];
+                              final now = DateTime.now();
+                              final timeDiff = task.dueDate.difference(now).inMinutes;
+                              final isHighPriority = task.priority == 'high';
+                              final isMediumPriority = task.priority == 'medium';
+                              final isLowPriority = task.priority == 'low';
+                              final isUrgent = isHighPriority && timeDiff <= 15 && !task.isAcknowledged;
+                              final isSnoozed = task.snoozedUntil?.isAfter(now) ?? false;
+                              if (isUrgent && !isSnoozed) {
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  _startVibrationEffect(task);
+                                });
+                              }
                               return Dismissible(
                                 key: Key(task.key.toString()),
                                 direction: DismissDirection.endToStart,
@@ -487,66 +558,142 @@ class _TasksPageState extends State<TasksPage> {
                                 child: Card(
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
+                                    side: BorderSide(
+                                      color: isHighPriority
+                                          ? (isUrgent ? Colors.red : Colors.redAccent)
+                                          : isMediumPriority
+                                              ? Colors.amber
+                                              : Colors.green,
+                                      width: 2,
+                                    ),
                                   ),
+                                  color: isUrgent ? Colors.red.withOpacity(0.1) : null,
                                   elevation: 3,
                                   child: InkWell(
-                                    onTap: () => _editTask(task, dateFormat), // 👈 Add this
+                                    onTap: () => _editTask(task, dateFormat),
                                     child: ListTile(
-                                    leading: Checkbox(
-                                      value: task.completed,
-                                      onChanged: (_) => _completeTask(task),
-                                    ),
-                                    title: Text(task.title),
-                                    subtitle: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          "Due: ${DateFormat(dateFormat).format(task.dueDate)} • "
-                                          "${task.dueDate.hour.toString().padLeft(2, '0')}:${task.dueDate.minute.toString().padLeft(2, '0')}",
-                                        ),
-                                        SizedBox(height: 4),
-                                        Row(
-                                          children: [
-                                            // Manually awarded stars
-                                            ...List.generate(
-                                              3,
-                                              (index) => Icon(
-                                                index < task.stars ? Icons.star : Icons.star_border,
-                                                color: Colors.amber,
-                                                size: 20,
-                                              ),
-                                            ),
-                                            // Auto stars (gray-colored)
-                                            if (task.autoStars > 0) ...[
-                                              SizedBox(width: 4),
-                                              Text("+"),
-                                              SizedBox(width: 2),
-                                              ...List.generate(
-                                                task.autoStars,
-                                                (index) => Icon(
-                                                  Icons.star,
-                                                  color: Colors.grey,
-                                                  size: 18,
-                                                ),
-                                              ),
-                                            ]
-                                          ],
-                                        ),
-                                        if (task.streakCount > 1)
+                                      leading: Checkbox(
+                                        value: task.completed,
+                                        onChanged: (_) => _completeTask(task),
+                                      ),
+                                      title: Text(task.title),
+                                      subtitle: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
                                           Row(
                                             children: [
-                                              Icon(Icons.local_fire_department, color: Colors.orangeAccent, size: 18),
-                                              SizedBox(width: 4),
-                                              Text('${task.streakCount}-day streak'),
+                                              Icon(
+                                                task.priority == 'high'
+                                                    ? Icons.warning
+                                                    : task.priority == 'medium'
+                                                        ? Icons.notifications_active
+                                                        : Icons.notifications_none,
+                                                color: task.priority == 'high'
+                                                    ? Colors.red
+                                                    : task.priority == 'medium'
+                                                        ? Colors.orange
+                                                        : Colors.grey,
+                                                size: 18,
+                                              ),
+                                              SizedBox(width: 6),
+                                              Text(
+                                                task.priority == 'high'
+                                                    ? "🔴 High Priority"
+                                                    : task.priority == 'medium'
+                                                        ? "🟡 Medium Priority"
+                                                        : "🟢 Low Priority",
+                                                style: TextStyle(fontWeight: FontWeight.w500),
+                                              ),
+                                              if (isUrgent && !isSnoozed) ...[
+                                                Spacer(),
+                                                ElevatedButton(
+                                                  onPressed: () {
+                                                    showDialog(
+                                                      context: context,
+                                                      builder: (_) => AlertDialog(
+                                                        title: Text("🔔 ${task.title}"),
+                                                        content: Text("This high-priority task is due soon."),
+                                                        actions: [
+                                                          TextButton(
+                                                            onPressed: () async {
+                                                              task.isAcknowledged = true;
+                                                              await task.save();
+                                                              Navigator.of(context).pop();
+                                                            },
+                                                            child: Text("Acknowledge"),
+                                                          ),
+                                                          ElevatedButton(
+                                                            onPressed: () async {
+                                                              final snoozeUntil = DateTime.now().add(Duration(minutes: 5));
+                                                              task.snoozedUntil = snoozeUntil;
+                                                              await task.save();
+                                                              Navigator.of(context).pop();
+                                                            },
+                                                            child: Text("Snooze 5m"),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  },
+                                                  child: Text("⚠️"),
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: Colors.redAccent,
+                                                    padding: EdgeInsets.symmetric(horizontal: 12),
+                                                  ),
+                                                )
+                                              ]
                                             ],
                                           ),
-                                      ],
+                                          SizedBox(height: 4),
+                                          Text(
+                                            "Due: ${DateFormat(dateFormat).format(task.dueDate)} • "
+                                            "${task.dueDate.hour.toString().padLeft(2, '0')}:${task.dueDate.minute.toString().padLeft(2, '0')}",
+                                          ),
+                                          if (isSnoozed)
+                                          Row(
+                                            children: [
+                                              Icon(Icons.snooze, color: Colors.blueGrey, size: 16),
+                                              SizedBox(width: 4),
+                                              Text("Snoozed until ${DateFormat('hh:mm a').format(task.snoozedUntil!)}"),
+                                            ],
+                                          ),
+                                          SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              ...List.generate(
+                                                3,
+                                                (i) => Icon(
+                                                  i < task.stars ? Icons.star : Icons.star_border,
+                                                  color: Colors.amber,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                              if (task.autoStars > 0) ...[
+                                                SizedBox(width: 4),
+                                                Text("+"),
+                                                SizedBox(width: 2),
+                                                ...List.generate(
+                                                  task.autoStars,
+                                                  (i) => Icon(Icons.star, color: Colors.grey, size: 18),
+                                                ),
+                                              ]
+                                            ],
+                                          ),
+                                          if (task.streakCount > 1)
+                                            Row(
+                                              children: [
+                                                Icon(Icons.local_fire_department, color: Colors.orangeAccent, size: 18),
+                                                SizedBox(width: 4),
+                                                Text('${task.streakCount}-day streak'),
+                                              ],
+                                            ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
                         ),
                   ),
                 ],

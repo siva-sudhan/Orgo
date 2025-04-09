@@ -18,6 +18,7 @@ class _ProfilePageState extends State<ProfilePage> {
   late UserSettings settings;
 
   final _nameController = TextEditingController();
+  bool _hasChanges = false;
 
   final List<String> currencyOptions = ['\$', '€', '£', '₹', '¥', '₩'];
   final List<String> genderOptions = ['Male', 'Female', 'Other'];
@@ -83,7 +84,9 @@ class _ProfilePageState extends State<ProfilePage> {
   
           setState(() {
             settings.profileImagePath = compressed.path;
+            _hasChanges = true;
           });
+
           settingsBox.put('user', settings);
         }
       }
@@ -97,7 +100,10 @@ class _ProfilePageState extends State<ProfilePage> {
         await file.delete();
       }
     }
-    setState(() => settings.profileImagePath = '');
+    setState(() {
+      settings.profileImagePath = '';
+      _hasChanges = true;
+    });
     settingsBox.put('user', settings);
   }
 
@@ -150,6 +156,7 @@ class _ProfilePageState extends State<ProfilePage> {
     if (picked != null) {
       setState(() {
         settings.dateOfBirth = picked;
+        _hasChanges = true;
       });
       settingsBox.put('user', settings);
     }
@@ -167,6 +174,9 @@ class _ProfilePageState extends State<ProfilePage> {
   void _updateSettings() {
     settings.name = _nameController.text;
     settingsBox.put('user', settings);
+    setState(() {
+      _hasChanges = false;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Profile Updated')),
     );
@@ -196,8 +206,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   onTap: _showImageOptions,
                   child: CircleAvatar(
                     radius: 60,
-                    backgroundImage:
-                        hasProfileImage ? FileImage(profileImageFile!) : null,
+                    backgroundImage: hasProfileImage ? FileImage(profileImageFile!) : null,
                     backgroundColor: Colors.deepPurple,
                     child: !hasProfileImage
                         ? Text(
@@ -225,117 +234,109 @@ class _ProfilePageState extends State<ProfilePage> {
               ],
             ),
             SizedBox(height: 16),
-
-            // Name
+      
+            // Name Input
             TextField(
               controller: _nameController,
               decoration: InputDecoration(labelText: 'Name'),
-              onChanged: (_) => settings.name = _nameController.text,
-            ),
-
-            SizedBox(height: 20),
-
-            // Profile Settings
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text("Profile Settings",
-                  style: Theme.of(context).textTheme.titleMedium),
-            ),
-            SizedBox(height: 10),
-
-            // Date of Birth
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text("Date of Birth"),
-              subtitle: Text(
-                settings.dateOfBirth != null
-                    ? "${DateFormat('dd MMM yyyy').format(settings.dateOfBirth!)} (${_calculateAge(settings.dateOfBirth!).toString()} years)"
-                    : "Not set",
-              ),
-              trailing: Icon(Icons.calendar_today),
-              onTap: _pickDateOfBirth,
-            ),
-            SizedBox(height: 10),
-
-            // Gender
-            DropdownButtonFormField<String>(
-              value: genderOptions.contains(settings.gender)
-                  ? settings.gender
-                  : null,
-              decoration: InputDecoration(labelText: 'Gender'),
-              items: genderOptions.map((gender) {
-                return DropdownMenuItem(value: gender, child: Text(gender));
-              }).toList(),
-              onChanged: (value) {
-                setState(() => settings.gender = value ?? '');
-                settingsBox.put('user', settings);
+              onChanged: (_) {
+                setState(() {
+                  settings.name = _nameController.text;
+                  _hasChanges = true;
+                });
               },
             ),
 
             SizedBox(height: 20),
+      
+            // Settings collapsible section
+            ExpansionTile(
+              title: Text("Settings", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              children: [
+      
+                // Date of Birth
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text("Date of Birth"),
+                  subtitle: Text(
+                    settings.dateOfBirth != null
+                        ? "${DateFormat('dd MMM yyyy').format(settings.dateOfBirth!)} (${_calculateAge(settings.dateOfBirth!).toString()} years)"
+                        : "Not set",
+                  ),
+                  trailing: Icon(Icons.calendar_today),
+                  onTap: _pickDateOfBirth,
+                ),
+                SizedBox(height: 10),
+      
+                // Gender
+                DropdownButtonFormField<String>(
+                  value: genderOptions.contains(settings.gender) ? settings.gender : null,
+                  decoration: InputDecoration(labelText: 'Gender'),
+                  items: genderOptions.map((gender) {
+                    return DropdownMenuItem(value: gender, child: Text(gender));
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      settings.gender = value ?? '';
+                      _hasChanges = true;
+                    });
+                    settingsBox.put('user', settings);
+                  },
+                ),
+      
+                SizedBox(height: 20),
+      
+                // Currency
+                DropdownButtonFormField<String>(
+                  value: currencyOptions.contains(settings.currency) ? settings.currency : null,
+                  decoration: InputDecoration(labelText: 'Currency'),
+                  items: currencyOptions.map((currency) {
+                    return DropdownMenuItem(value: currency, child: Text(currency));
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      settings.currency = value ?? '\$';
+                      _hasChanges = true;
+                    });
+                    settingsBox.put('user', settings);
+                  },
 
-            // Finance Settings
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text("Finance Settings",
-                  style: Theme.of(context).textTheme.titleMedium),
+                ),
+      
+                SizedBox(height: 20),
+      
+                // Date Format
+                DropdownButtonFormField<String>(
+                  value: dateFormats.contains(settings.dateTimeFormat) ? settings.dateTimeFormat : 'dd MMM yy',
+                  decoration: InputDecoration(labelText: 'Date Format'),
+                  items: dateFormats.map((format) {
+                    final now = DateTime.now();
+                    final formatted = DateFormat(format).format(now);
+                    return DropdownMenuItem(value: format, child: Text("$format  ($formatted)"));
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      settings.dateTimeFormat = value ?? 'dd MMM yy';
+                      _hasChanges = true;
+                    });
+                    settingsBox.put('user', settings);
+                  },
+                ),
+      
+                SizedBox(height: 10),
+              ],
             ),
-            SizedBox(height: 10),
-
-            // Currency
-            DropdownButtonFormField<String>(
-              value: currencyOptions.contains(settings.currency)
-                  ? settings.currency
-                  : null,
-              decoration: InputDecoration(labelText: 'Currency'),
-              items: currencyOptions.map((currency) {
-                return DropdownMenuItem(value: currency, child: Text(currency));
-              }).toList(),
-              onChanged: (value) {
-                setState(() => settings.currency = value ?? '\$');
-                settingsBox.put('user', settings);
-              },
-            ),
-
-            SizedBox(height: 20),
-
-            // Task Settings
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text("Task Settings",
-                  style: Theme.of(context).textTheme.titleMedium),
-            ),
-            SizedBox(height: 10),
-
-            // Date Format
-            DropdownButtonFormField<String>(
-              value: dateFormats.contains(settings.dateTimeFormat)
-                  ? settings.dateTimeFormat
-                  : 'dd MMM yy',
-              decoration: InputDecoration(labelText: 'Date Format'),
-              items: dateFormats
-                  .where((format) => format != 'yyyy-MM-dd')
-                  .map((format) {
-                final now = DateTime.now();
-                final formatted = DateFormat(format).format(now);
-                return DropdownMenuItem(
-                    value: format, child: Text("$format  ($formatted)"));
-              }).toList(),
-              onChanged: (value) {
-                setState(() => settings.dateTimeFormat = value ?? 'dd MMM yy');
-                settingsBox.put('user', settings);
-              },
-            ),
-
+      
             SizedBox(height: 30),
-
+      
             ElevatedButton.icon(
-              onPressed: _updateSettings,
+              onPressed: _hasChanges ? _updateSettings : null,
               icon: Icon(Icons.save),
               label: Text("Save"),
               style: ElevatedButton.styleFrom(
                 padding: EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                backgroundColor: Colors.deepPurple,
+                backgroundColor: _hasChanges ? Colors.deepPurple : Colors.grey,
+                foregroundColor: Colors.white,
               ),
             ),
           ],

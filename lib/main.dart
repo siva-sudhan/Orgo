@@ -15,7 +15,7 @@ import 'package:intl/intl.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  //🧠 Uncomment below if you need to wipe Hive data during development
+  // //🧠 Uncomment below if you need to wipe Hive data during development
   // final appDir = await getApplicationDocumentsDirectory();
   // final hiveFiles = Directory(appDir.path)
   //     .listSync()
@@ -73,17 +73,12 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
-
-  final List<Widget> _pages = [
-    HomePage(),
-    FinancePage(),
-    TasksPage(),
-    ProfilePage(),
-  ];
+  late PageController _pageController;
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: _selectedIndex);
 
     if (widget.streakReset) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -110,15 +105,31 @@ class _MainNavigationState extends State<MainNavigation> {
     setState(() {
       _selectedIndex = index;
     });
+    _pageController.jumpToPage(index);
   }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> _pages = [
+      HomePage(onSectionTap: _onItemTapped),
+      FinancePage(),
+      TasksPage(),
+      ProfilePage(),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Orgo'),
       ),
-      body: _pages[_selectedIndex],
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        children: _pages,
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,

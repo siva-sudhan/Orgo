@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'tasks_page.dart';
+import 'finance_page.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -10,7 +12,8 @@ import '../models/user_settings.dart';
 import '../widgets/level_progress_card.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  final void Function(int) onSectionTap;
+  const HomePage({super.key, required this.onSectionTap});
 
   String getGreeting() {
     final hour = DateTime.now().hour;
@@ -69,16 +72,72 @@ class HomePage extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            CircleAvatar(
-                              radius: 22,
-                              backgroundImage: hasProfileImage ? FileImage(profileImageFile!) : null,
-                              backgroundColor: Colors.deepPurple,
-                              child: !hasProfileImage
-                                  ? Text(
-                                      userName[0].toUpperCase(),
-                                      style: const TextStyle(fontSize: 18, color: Colors.white),
-                                    )
-                                  : null,
+                            Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 72,
+                                  height: 72,
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween<double>(
+                                      begin: 0.0,
+                                      end: progress,
+                                    ),
+                                    duration: Duration(milliseconds: 600),
+                                    builder: (context, value, _) {
+                                      return CircularProgressIndicator(
+                                        value: value,
+                                        strokeWidth: 6,
+                                        backgroundColor: Colors.grey[300],
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.deepPurple),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                CircleAvatar(
+                                  radius: 28,
+                                  backgroundImage: hasProfileImage ? FileImage(profileImageFile!) : null,
+                                  backgroundColor: Colors.deepPurple,
+                                  child: !hasProfileImage
+                                      ? Text(
+                                          userName[0].toUpperCase(),
+                                          style: const TextStyle(fontSize: 22, color: Colors.white),
+                                        )
+                                      : null,
+                                ),
+                                if (streak > 0)
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange,
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black26,
+                                            blurRadius: 4,
+                                          )
+                                        ],
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.local_fire_department, size: 16, color: Colors.white),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            "$streak",
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -113,20 +172,20 @@ class HomePage extends StatelessWidget {
                           const SizedBox(height: 20),
                         ],
 
-                        Card(
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
-                          elevation: 3,
-                          child: ListTile(
-                            title: const Text("Total Balance",
-                                style: TextStyle(fontSize: 18)),
-                            subtitle: Text(
-                              "$currency${balance.toStringAsFixed(2)}",
-                              style: TextStyle(
-                                fontSize: 22,
-                                color:
-                                    balance >= 0 ? Colors.green : Colors.red,
-                                fontWeight: FontWeight.bold,
+                        InkWell(
+                          onTap: () => onSectionTap(1), // 1 = Finance Page index
+                          child: Card(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 3,
+                            child: ListTile(
+                              title: const Text("Total Balance", style: TextStyle(fontSize: 18)),
+                              subtitle: Text(
+                                "$currency${balance.toStringAsFixed(2)}",
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  color: balance >= 0 ? Colors.green : Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ),
@@ -207,18 +266,19 @@ class HomePage extends StatelessWidget {
 
                         const SizedBox(height: 20),
 
-                        Card(
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
-                          elevation: 3,
-                          child: ListTile(
-                            title: const Text("Tasks Overview"),
-                            subtitle: Text(
-                              "$completedTasks of $totalTasks tasks completed",
-                              style: const TextStyle(fontSize: 16),
+                        InkWell(
+                          onTap: () => onSectionTap(2), // 2 = Tasks Page index
+                          child: Card(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 3,
+                            child: ListTile(
+                              title: const Text("Tasks Overview"),
+                              subtitle: Text(
+                                "$completedTasks of $totalTasks tasks completed",
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                              trailing: const Icon(Icons.task_alt, color: Colors.deepPurple),
                             ),
-                            trailing: const Icon(Icons.task_alt,
-                                color: Colors.deepPurple),
                           ),
                         ),
 

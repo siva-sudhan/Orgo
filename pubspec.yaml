@@ -67,6 +67,7 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
   assets:
+    - assets/images/orgo_app_logo.png
     - assets/images/orgo_logo.png
     - assets/sounds/income.wav
     - assets/sounds/expense.wav
@@ -78,12 +79,12 @@ flutter:
 flutter_icons:
   android: true
   ios: true
-  image_path: "assets/images/orgo_logo.png"
-  adaptive_icon_background: "#FFF7EB"  # Android adaptive icon bg
-  adaptive_icon_foreground: "assets/images/orgo_logo.png"
+  image_path: "assets/images/orgo_app_logo.png"
+  adaptive_icon_background: "#0E7C4D"  # Android adaptive icon bg
+  adaptive_icon_foreground: "assets/images/orgo_app_logo.png"
 
 flutter_native_splash:
-  color: "#C4CE6C"
+  color: "#FF891F"
   image: assets/images/orgo_logo.png
   android: true
   ios: true
