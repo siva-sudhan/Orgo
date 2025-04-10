@@ -29,13 +29,14 @@ class UserSettingsAdapter extends TypeAdapter<UserSettings> {
       lastTaskCompletedAt: fields[9] as DateTime?,
       customCategories: (fields[10] as List).cast<String>(),
       spendingLimits: (fields[11] as Map).cast<String, double>(),
+      hideBalance: fields[12] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, UserSettings obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.name)
       ..writeByte(1)
@@ -59,7 +60,9 @@ class UserSettingsAdapter extends TypeAdapter<UserSettings> {
       ..writeByte(10)
       ..write(obj.customCategories)
       ..writeByte(11)
-      ..write(obj.spendingLimits);
+      ..write(obj.spendingLimits)
+      ..writeByte(12)
+      ..write(obj.hideBalance);
   }
 
   @override

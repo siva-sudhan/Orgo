@@ -17,6 +17,7 @@ class _ProfilePageState extends State<ProfilePage> {
   late Box<UserSettings> settingsBox;
   late UserSettings settings;
 
+  bool hideBalanceWithPasscode = false; // 🆕 local state
   final _nameController = TextEditingController();
   bool _hasChanges = false;
 
@@ -35,6 +36,7 @@ class _ProfilePageState extends State<ProfilePage> {
     settingsBox = Hive.box<UserSettings>('settings');
     settings = settingsBox.get('user') as UserSettings? ?? UserSettings();
     _nameController.text = settings.name;
+    hideBalanceWithPasscode = settings.hideBalance;
   }
 
   Future<void> _pickImage(ImageSource source) async {
@@ -322,7 +324,20 @@ class _ProfilePageState extends State<ProfilePage> {
                     settingsBox.put('user', settings);
                   },
                 ),
-      
+                SwitchListTile(
+                  title: Text("Hide Balance with Passcode"),
+                  subtitle: Text("Require Face ID / Fingerprint / Password to view balance"),
+                  value: hideBalanceWithPasscode,
+                  onChanged: (value) async {
+                    setState(() {
+                      hideBalanceWithPasscode = value;
+                      settings.hideBalance = value;
+                      _hasChanges = true;
+                    });
+                    await settings.save();
+                  },
+                  activeColor: Colors.deepPurple,
+                ),
                 SizedBox(height: 10),
               ],
             ),

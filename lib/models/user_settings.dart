@@ -40,6 +40,9 @@ class UserSettings extends HiveObject {
   @HiveField(11)
   Map<String, double> spendingLimits; // 🆕 Category spending limits
 
+  @HiveField(12)
+  bool hideBalance; // 🆕 Hide balance with passcode/biometric
+
   UserSettings({
     this.name = '',
     this.currency = '\$',
@@ -53,5 +56,6 @@ class UserSettings extends HiveObject {
     this.lastTaskCompletedAt,
     this.customCategories = const [],
     this.spendingLimits = const {},
+    this.hideBalance = false, // default value
   });
 }

@@ -31,6 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   hive: ^2.2.3
+  local_auth: ^2.1.6
   hive_flutter: ^1.1.0
   image_picker: ^1.0.4
   image_cropper:

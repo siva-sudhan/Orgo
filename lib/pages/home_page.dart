@@ -1,6 +1,4 @@
 import 'dart:io';
-import 'tasks_page.dart';
-import 'finance_page.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -10,10 +8,27 @@ import '../models/transaction.dart';
 import '../models/task.dart';
 import '../models/user_settings.dart';
 import '../widgets/level_progress_card.dart';
+import '../services/auth_service.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   final void Function(int) onSectionTap;
   const HomePage({super.key, required this.onSectionTap});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  bool isBalanceVisible = false;
+
+  Future<void> _attemptUnlock() async {
+    final success = await AuthService.authenticateUser();
+    if (success) {
+      setState(() {
+        isBalanceVisible = true;
+      });
+    }
+  }
 
   String getGreeting() {
     final hour = DateTime.now().hour;
@@ -34,11 +49,11 @@ class HomePage extends StatelessWidget {
         final profileImageFile = hasProfileImage ? File(profileImagePath) : null;
         final currency = settings.currency;
         final streak = settings.taskStreak;
-        final dateFormat = settings.dateTimeFormat;
         final limits = settings.spendingLimits;
 
         return ValueListenableBuilder<Box<Transaction>>(
-          valueListenable: Hive.box<Transaction>('transactions').listenable(),
+          valueListenable:
+              Hive.box<Transaction>('transactions').listenable(),
           builder: (context, transactionBox, _) {
             final transactions = transactionBox.values.toList();
             double balance = 0.0;
@@ -172,18 +187,31 @@ class HomePage extends StatelessWidget {
                           const SizedBox(height: 20),
                         ],
 
-                        InkWell(
-                          onTap: () => onSectionTap(1), // 1 = Finance Page index
+                        /// 🔐 Balance Card with Long Press Unlock
+                        GestureDetector(
+                          onTap: () => widget.onSectionTap(1),
+                          onLongPress: () {
+                            if (settings.hideBalance) {
+                              _attemptUnlock();
+                            }
+                          },
                           child: Card(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
                             elevation: 3,
                             child: ListTile(
-                              title: const Text("Total Balance", style: TextStyle(fontSize: 18)),
+                              title: const Text("Total Balance",
+                                  style: TextStyle(fontSize: 18)),
                               subtitle: Text(
-                                "$currency${balance.toStringAsFixed(2)}",
+                                settings.hideBalance &&
+                                        !isBalanceVisible
+                                    ? "$currency••••••"
+                                    : "$currency${balance.toStringAsFixed(2)}",
                                 style: TextStyle(
                                   fontSize: 22,
-                                  color: balance >= 0 ? Colors.green : Colors.red,
+                                  color: balance >= 0
+                                      ? Colors.green
+                                      : Colors.red,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -225,8 +253,6 @@ class HomePage extends StatelessWidget {
                                     ],
                                   ),
                                   const SizedBox(height: 10),
-
-                                  // 🛑 Spending Limit Warnings
                                   ...categoryMap.entries.map((entry) {
                                     final limit = limits[entry.key];
                                     if (limit != null &&
@@ -241,7 +267,7 @@ class HomePage extends StatelessWidget {
                                             const SizedBox(width: 6),
                                             Expanded(
                                               child: Text(
-                                                "${entry.key} spending exceeded! Limit: $currency${limit.toStringAsFixed(2)} | Used: $currency${entry.value.toStringAsFixed(2)}",
+                                                "${entry.key} exceeded! Limit: $currency${limit.toStringAsFixed(2)} | Used: $currency${entry.value.toStringAsFixed(2)}",
                                                 style: const TextStyle(
                                                     color: Colors.red),
                                               ),
@@ -267,9 +293,10 @@ class HomePage extends StatelessWidget {
                         const SizedBox(height: 20),
 
                         InkWell(
-                          onTap: () => onSectionTap(2), // 2 = Tasks Page index
+                          onTap: () => widget.onSectionTap(2),
                           child: Card(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
                             elevation: 3,
                             child: ListTile(
                               title: const Text("Tasks Overview"),
@@ -277,7 +304,8 @@ class HomePage extends StatelessWidget {
                                 "$completedTasks of $totalTasks tasks completed",
                                 style: const TextStyle(fontSize: 16),
                               ),
-                              trailing: const Icon(Icons.task_alt, color: Colors.deepPurple),
+                              trailing: const Icon(Icons.task_alt,
+                                  color: Colors.deepPurple),
                             ),
                           ),
                         ),

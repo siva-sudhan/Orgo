@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models/transaction.dart';
 import '../models/user_settings.dart';
 import 'package:flutter/services.dart';
+import '../services/auth_service.dart';
 
 class FinancePage extends StatefulWidget {
   @override
@@ -24,6 +25,9 @@ class _FinancePageState extends State<FinancePage> {
   bool animateUpward = true;
   AudioPlayer audioPlayer = AudioPlayer();
   bool showTotalBalance = false; // true = total balance, false = daily balance
+  bool isBalanceVisible = false;
+  int _selectedIndex = 1;
+  final List<DateTime> _dateCarousel = [];
 
   @override
   void initState() {
@@ -31,6 +35,26 @@ class _FinancePageState extends State<FinancePage> {
     transactionBox = Hive.box<Transaction>('transactions');
     settingsBox = Hive.box<UserSettings>('settings');
     customCategories = (settingsBox.get('user')?.customCategories ?? []).cast<String>();
+    _generateDateCarousel();
+  }
+
+  void _generateDateCarousel() {
+    _dateCarousel.clear();
+    for (int i = -1; i <= 1; i++) {
+      _dateCarousel.add(selectedDate.add(Duration(days: i)));
+    }
+  }
+
+  Future<void> _attemptUnlock() async {
+    final settings = settingsBox.get('user') ?? UserSettings();
+    if (!settings.hideBalance) return;
+
+    final success = await AuthService.authenticateUser();
+    if (success) {
+      setState(() {
+        isBalanceVisible = true;
+      });
+    }
   }
 
   void showTransactionFeedback(double amount, bool isIncome) async {
@@ -132,18 +156,6 @@ class _FinancePageState extends State<FinancePage> {
   void _goToToday() {
     setState(() {
       selectedDate = DateTime.now();
-    });
-  }
-  
-  void _goToPreviousDate() {
-    setState(() {
-      selectedDate = selectedDate.subtract(Duration(days: 1));
-    });
-  }
-  
-  void _goToNextDate() {
-    setState(() {
-      selectedDate = selectedDate.add(Duration(days: 1));
     });
   }
 
@@ -347,12 +359,39 @@ class _FinancePageState extends State<FinancePage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          "Balance: $currency${balance.toStringAsFixed(2)}",
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: balance >= 0 ? Colors.green : Colors.red,
+                        GestureDetector(
+                          onTap: () {
+                            if ((settings.hideBalance) && !isBalanceVisible) {
+                              _attemptUnlock();
+                            }
+                          },
+                          child: Row(
+                            children: [
+                              Text(
+                                "Balance: ",
+                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+                              ),
+                              Text(
+                                settings.hideBalance && !isBalanceVisible
+                                    ? "$currency••••••"
+                                    : "$currency${balance.toStringAsFixed(2)}",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: balance >= 0 ? Colors.green : Colors.red,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(
+                                settings.hideBalance && !isBalanceVisible
+                                    ? Icons.lock
+                                    : Icons.lock_open,
+                                size: 18,
+                                color: settings.hideBalance && !isBalanceVisible
+                                    ? Colors.grey
+                                    : Colors.green,
+                              ),
+                            ],
                           ),
                         ),
                         Row(
@@ -373,35 +412,98 @@ class _FinancePageState extends State<FinancePage> {
                     ),
                     SizedBox(height: 10),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        IconButton(
-                          icon: Icon(Icons.arrow_left),
-                          onPressed: _goToPreviousDate,
-                        ),
-                        GestureDetector(
-                          onTap: () => _selectDate(context),
-                          child: Row(
-                            children: [
-                              Text(
-                                DateFormat(dateFormat).format(selectedDate),
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                  decoration: TextDecoration.underline,
-                                ),
+                        Expanded(
+                          child: GestureDetector(
+                            onHorizontalDragEnd: (details) {
+                              if (details.primaryVelocity != null) {
+                                if (details.primaryVelocity! < 0) {
+                                  HapticFeedback.lightImpact();
+                                  setState(() {
+                                    selectedDate = selectedDate.add(Duration(days: 1));
+                                    _generateDateCarousel();
+                                  });
+                                } else if (details.primaryVelocity! > 0) {
+                                  HapticFeedback.lightImpact();
+                                  setState(() {
+                                    selectedDate = selectedDate.subtract(Duration(days: 1));
+                                    _generateDateCarousel();
+                                  });
+                                }
+                              }
+                            },
+                            child: SizedBox(
+                              height: 60,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _dateCarousel.length,
+                                itemBuilder: (context, index) {
+                                  final date = _dateCarousel[index];
+                                  final isSelected = DateFormat('yyyy-MM-dd').format(date) ==
+                                      DateFormat('yyyy-MM-dd').format(selectedDate);
+
+                                  return GestureDetector(
+                                    onTap: () async {
+                                      if (isSelected) {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: selectedDate,
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (picked != null) {
+                                          HapticFeedback.lightImpact();
+                                          setState(() {
+                                            selectedDate = picked;
+                                            _generateDateCarousel();
+                                          });
+                                        }
+                                      } else {
+                                        HapticFeedback.lightImpact();
+                                        setState(() {
+                                          selectedDate = date;
+                                          _generateDateCarousel();
+                                        });
+                                      }
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            DateFormat('E').format(date),
+                                            style: TextStyle(
+                                              color: isSelected ? Colors.black : Colors.grey,
+                                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                            ),
+                                          ),
+                                          Text(
+                                            DateFormat('d MMM').format(date),
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              color: isSelected ? Colors.black : Colors.grey,
+                                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
-                              SizedBox(width: 8),
-                              Icon(Icons.calendar_today, size: 18),
-                            ],
+                            ),
                           ),
                         ),
-                        IconButton(
-                          icon: Icon(Icons.arrow_right),
-                          onPressed: _goToNextDate,
-                        ),
                         TextButton(
-                          onPressed: _goToToday,
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            setState(() {
+                              selectedDate = DateTime.now();
+                              _generateDateCarousel();
+                            });
+                          },
                           child: Text("Today"),
                         ),
                       ],

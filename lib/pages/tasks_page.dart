@@ -17,17 +17,30 @@ class TasksPage extends StatefulWidget {
 
 class _TasksPageState extends State<TasksPage> {
   late Box<Task> taskBox;
+  DateTime selectedDate = DateTime.now();
+  bool showAllTasks = false;
+  List<String> selectedPriorities = [];
   bool showStreakBanner = true;
   // For high-priority subtle vibration animation
   Offset _shakeOffset = Offset.zero;
   Timer? _vibrationTimer;
+  int _selectedIndex = 1; // center
+  final List<DateTime> _dateCarousel = [];
 
   @override
   void initState() {
     super.initState();
+    _generateDateCarousel();
     taskBox = Hive.box<Task>('tasks');
   }
 
+  void _generateDateCarousel() {
+    _dateCarousel.clear();
+    for (int i = -1; i <= 1; i++) {
+      _dateCarousel.add(selectedDate.add(Duration(days: i)));
+    }
+  }
+  
   void _startVibrationEffect(Task task) {
     if (!mounted || task.isAcknowledged || (task.snoozedUntil?.isAfter(DateTime.now()) ?? false)) return;
   
@@ -454,7 +467,13 @@ class _TasksPageState extends State<TasksPage> {
           valueListenable: taskBox.listenable(),
           builder: (context, box, _) {
             final tasks = box.values.toList();
-            final pendingTasks = tasks.where((t) => !t.completed).toList();
+            final pendingTasks = tasks.where((t) {
+              final matchesDate = showAllTasks ||
+                  DateFormat('yyyy-MM-dd').format(t.dueDate) ==
+                      DateFormat('yyyy-MM-dd').format(selectedDate);
+              final matchesPriority = selectedPriorities.isEmpty || selectedPriorities.contains(t.priority);
+              return !t.completed && matchesDate && matchesPriority;
+            }).toList();
             final completedTasks = tasks.where((t) => t.completed).toList();
 
             return Scaffold(
@@ -524,6 +543,191 @@ class _TasksPageState extends State<TasksPage> {
                             ),
                           )
                         : SizedBox.shrink(),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(""),
+                            Row(
+                              children: [
+                                Text("Today"),
+                                Switch(
+                                  value: showAllTasks,
+                                  onChanged: (val) {
+                                    setState(() {
+                                      showAllTasks = val;
+                                    });
+                                  },
+                                ),
+                                Text("All"),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                          GestureDetector(
+                            onHorizontalDragEnd: (details) {
+                              if (details.primaryVelocity != null) {
+                                if (details.primaryVelocity! < 0) {
+                                  // Swipe Left → Next Day
+                                  HapticFeedback.lightImpact();
+                                  setState(() {
+                                    selectedDate = selectedDate.add(Duration(days: 1));
+                                    _generateDateCarousel();
+                                  });
+                                } else if (details.primaryVelocity! > 0) {
+                                  // Swipe Right → Previous Day
+                                  HapticFeedback.lightImpact();
+                                  setState(() {
+                                    selectedDate = selectedDate.subtract(Duration(days: 1));
+                                    _generateDateCarousel();
+                                  });
+                                }
+                              }
+                            },
+                            child: SizedBox(
+                              height: 60,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: List.generate(_dateCarousel.length, (index) {
+                                  final date = _dateCarousel[index];
+                                  final isSelected = DateFormat('yyyy-MM-dd').format(date) ==
+                                      DateFormat('yyyy-MM-dd').format(selectedDate);
+
+                                  return GestureDetector(
+                                    onTap: () async {
+                                      if (isSelected) {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: selectedDate,
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (picked != null) {
+                                          HapticFeedback.lightImpact();
+                                          setState(() {
+                                            selectedDate = picked;
+                                            _generateDateCarousel();
+                                          });
+                                        }
+                                      } else {
+                                        HapticFeedback.lightImpact();
+                                        setState(() {
+                                          selectedDate = date;
+                                          _generateDateCarousel();
+                                        });
+                                      }
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            DateFormat('E').format(date),
+                                            style: TextStyle(
+                                              color: isSelected ? Colors.black : Colors.grey,
+                                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                            ),
+                                          ),
+                                          Text(
+                                            DateFormat('d MMM').format(date),
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              color: isSelected ? Colors.black : Colors.grey,
+                                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ),
+                            ),
+                          ),
+                            TextButton(
+                              onPressed: () {
+                                HapticFeedback.lightImpact();
+                                setState(() {
+                                  selectedDate = DateTime.now();
+                                  _generateDateCarousel();
+                                });
+                              },
+                              child: Text("Today"),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: ExpansionTile(
+                      title: Text(
+                        selectedPriorities.isEmpty
+                            ? "Filter by Priority"
+                            : "Filtered: ${selectedPriorities.join(', ')}",
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      children: [
+                        Wrap(
+                          spacing: 10,
+                          children: [
+                            FilterChip(
+                              label: Text("🟢 Low"),
+                              selected: selectedPriorities.contains("low"),
+                              onSelected: (bool selected) {
+                                setState(() {
+                                  selected
+                                      ? selectedPriorities.add("low")
+                                      : selectedPriorities.remove("low");
+                                });
+                              },
+                            ),
+                            FilterChip(
+                              label: Text("🟡 Medium"),
+                              selected: selectedPriorities.contains("medium"),
+                              onSelected: (bool selected) {
+                                setState(() {
+                                  selected
+                                      ? selectedPriorities.add("medium")
+                                      : selectedPriorities.remove("medium");
+                                });
+                              },
+                            ),
+                            FilterChip(
+                              label: Text("🔴 High"),
+                              selected: selectedPriorities.contains("high"),
+                              onSelected: (bool selected) {
+                                setState(() {
+                                  selected
+                                      ? selectedPriorities.add("high")
+                                      : selectedPriorities.remove("high");
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () {
+                              setState(() => selectedPriorities.clear());
+                            },
+                            child: Text("Clear Filters"),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   Expanded(
                     child: pendingTasks.isEmpty
