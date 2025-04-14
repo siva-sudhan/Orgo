@@ -422,7 +422,7 @@ class _TasksPageState extends State<TasksPage> {
     
     final settingsBox = Hive.box<UserSettings>('settings');
     final settings = settingsBox.get('user') ?? UserSettings();
-    
+    settings.fixNulls();
     final lastCompletedDate = settings.lastTaskCompletedAt != null
         ? DateTime(
             settings.lastTaskCompletedAt!.year,
@@ -460,6 +460,7 @@ class _TasksPageState extends State<TasksPage> {
       valueListenable: Hive.box<UserSettings>('settings').listenable(keys: ['user']),
       builder: (context, settingsBox, _) {
         final settings = settingsBox.get('user') ?? UserSettings();
+        settings.fixNulls();
         final dateFormat = settings.dateTimeFormat.isNotEmpty ? settings.dateTimeFormat : 'dd MMM yy';
         final globalStreak = settings.taskStreak;
 
@@ -480,6 +481,36 @@ class _TasksPageState extends State<TasksPage> {
               appBar: AppBar(
                 title: Text("Tasks"),
                 actions: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                    child: Tooltip(
+                      message: "Toggle between today's tasks and all tasks",
+                      child: ToggleButtons(
+                        isSelected: [!showAllTasks, showAllTasks],
+                        onPressed: (index) {
+                          setState(() => showAllTasks = index == 1);
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        selectedColor: Colors.white,
+                        fillColor: Colors.deepPurple,
+                        splashColor: Colors.deepPurpleAccent.withOpacity(0.2),
+                        selectedBorderColor: Colors.deepPurple,
+                        borderColor: Colors.transparent,
+                        borderWidth: 0.8,
+                        constraints: BoxConstraints(minWidth: 48, minHeight: 36),
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            child: Text("Today", style: TextStyle(fontSize: 14)),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            child: Text("All", style: TextStyle(fontSize: 14)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   if (completedTasks.isNotEmpty)
                     IconButton(
                       icon: Icon(Icons.history),
@@ -549,26 +580,6 @@ class _TasksPageState extends State<TasksPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(""),
-                            Row(
-                              children: [
-                                Text("Today"),
-                                Switch(
-                                  value: showAllTasks,
-                                  onChanged: (val) {
-                                    setState(() {
-                                      showAllTasks = val;
-                                    });
-                                  },
-                                ),
-                                Text("All"),
-                              ],
-                            ),
-                          ],
-                        ),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [

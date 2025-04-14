@@ -37,6 +37,105 @@ class _HomePageState extends State<HomePage> {
     return 'Good evening';
   }
 
+  void _showProfileSwitcherDialog(UserSettings settings) {
+    settings.fixNulls();
+    final controller = TextEditingController();
+    final transactionBox = Hive.box<Transaction>('transactions');
+
+    showDialog(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          title: Text("Switch Profile"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...settings.profileList.map((profile) => ListTile(
+                title: Text(profile),
+                trailing: settings.activeProfile == profile
+                    ? Icon(Icons.check, color: Colors.green)
+                    : null,
+                onTap: () {
+                  settings.activeProfile = profile;
+                  settings.save();
+                  Navigator.pop(context);
+                  if (mounted) setState(() {});
+                },
+                onLongPress: () {
+                  if (profile == 'Main') return; // Prevent deleting default profile
+
+                  final hasTransactions = transactionBox.values
+                      .where((tx) => tx.profileName == profile)
+                      .isNotEmpty;
+
+                  showDialog(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: Text("Delete Profile"),
+                      content: Text(
+                        hasTransactions
+                            ? "This profile has transactions. Are you sure you want to delete '$profile'?"
+                            : "Are you sure you want to delete '$profile'?",
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text("Cancel"),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            final updatedProfiles = settings.profileList.where((p) => p != profile).toList();
+                            settings.profileList = updatedProfiles;
+
+                            if (settings.activeProfile == profile) {
+                              settings.activeProfile = 'Main';
+                            }
+
+                            settings.save();
+                            Navigator.pop(context); // Close confirm
+                            Navigator.pop(context); // Close profile dialog
+
+                            if (mounted) setState(() {});
+                          },
+                          child: Text("Delete", style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              )),
+              const Divider(),
+              TextField(
+                controller: controller,
+                decoration: InputDecoration(hintText: "New profile name"),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                final newProfile = controller.text.trim();
+                final exists = settings.profileList
+                    .map((p) => p.toLowerCase())
+                    .contains(newProfile.toLowerCase());
+
+                if (newProfile.isNotEmpty && !exists) {
+                  final updatedProfiles = [...settings.profileList, newProfile];
+                  settings.profileList = updatedProfiles;
+                  settings.activeProfile = newProfile;
+                  settings.save();
+                  controller.clear(); // Optional: reset text field
+                  setStateDialog(() {}); // ✅ make dialog refresh its list
+                }
+              },
+              child: Text("Add"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<Box<UserSettings>>(
@@ -50,20 +149,23 @@ class _HomePageState extends State<HomePage> {
         final currency = settings.currency;
         final streak = settings.taskStreak;
         final limits = settings.spendingLimits;
+        final activeProfile = settings.activeProfile;
+        final profiles = settings.profileList;
 
         return ValueListenableBuilder<Box<Transaction>>(
-          valueListenable:
-              Hive.box<Transaction>('transactions').listenable(),
+          valueListenable: Hive.box<Transaction>('transactions').listenable(),
           builder: (context, transactionBox, _) {
-            final transactions = transactionBox.values.toList();
+            final transactions = transactionBox.values
+                .where((tx) => tx.profileName == activeProfile)
+                .toList();
+
             double balance = 0.0;
             Map<String, double> categoryMap = {};
 
             for (var tx in transactions) {
               balance += tx.isIncome ? tx.amount : -tx.amount;
               if (!tx.isIncome) {
-                categoryMap[tx.category] =
-                    (categoryMap[tx.category] ?? 0) + tx.amount;
+                categoryMap[tx.category] = (categoryMap[tx.category] ?? 0) + tx.amount;
               }
             }
 
@@ -75,8 +177,11 @@ class _HomePageState extends State<HomePage> {
                     tasks.where((task) => task.completed).length;
                 int totalTasks = tasks.length;
 
-                double progress = settings.xp / (settings.level * 100);
-                if (progress > 1.0) progress = 1.0;
+                double progress = (settings.level > 0)
+                    ? settings.xp / (settings.level * 100)
+                    : 0.0;
+
+                progress = progress.isNaN || progress < 0 ? 0.0 : progress;
 
                 return Scaffold(
                   appBar: AppBar(title: const Text("Orgo Dashboard")),
@@ -196,27 +301,46 @@ class _HomePageState extends State<HomePage> {
                             }
                           },
                           child: Card(
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             elevation: 3,
-                            child: ListTile(
-                              title: const Text("Total Balance",
-                                  style: TextStyle(fontSize: 18)),
-                              subtitle: Text(
-                                settings.hideBalance &&
-                                        !isBalanceVisible
-                                    ? "$currency••••••"
-                                    : "$currency${balance.toStringAsFixed(2)}",
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  color: balance >= 0
-                                      ? Colors.green
-                                      : Colors.red,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "Total Balance (${activeProfile})",
+                                          style: TextStyle(fontSize: 18),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                        Text(
+                                          settings.hideBalance && !isBalanceVisible
+                                              ? "$currency••••••"
+                                              : "$currency${balance.toStringAsFixed(2)}",
+                                          style: TextStyle(
+                                            fontSize: 22,
+                                            color: balance >= 0 ? Colors.green : Colors.red,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 8.0),
+                                    child: IconButton(
+                                      icon: Icon(Icons.settings),
+                                      onPressed: () => _showProfileSwitcherDialog(settings),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
+                          )
                         ),
                         const SizedBox(height: 20),
 

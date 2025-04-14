@@ -30,13 +30,15 @@ class UserSettingsAdapter extends TypeAdapter<UserSettings> {
       customCategories: (fields[10] as List).cast<String>(),
       spendingLimits: (fields[11] as Map).cast<String, double>(),
       hideBalance: fields[12] as bool,
+      profileList: (fields[13] as List).cast<String>(),
+      activeProfile: fields[14] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, UserSettings obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(15)
       ..writeByte(0)
       ..write(obj.name)
       ..writeByte(1)
@@ -62,7 +64,11 @@ class UserSettingsAdapter extends TypeAdapter<UserSettings> {
       ..writeByte(11)
       ..write(obj.spendingLimits)
       ..writeByte(12)
-      ..write(obj.hideBalance);
+      ..write(obj.hideBalance)
+      ..writeByte(13)
+      ..write(obj.profileList)
+      ..writeByte(14)
+      ..write(obj.activeProfile);
   }
 
   @override

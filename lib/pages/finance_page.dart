@@ -47,6 +47,7 @@ class _FinancePageState extends State<FinancePage> {
 
   Future<void> _attemptUnlock() async {
     final settings = settingsBox.get('user') ?? UserSettings();
+    settings.fixNulls();
     if (!settings.hideBalance) return;
 
     final success = await AuthService.authenticateUser();
@@ -158,16 +159,119 @@ class _FinancePageState extends State<FinancePage> {
       selectedDate = DateTime.now();
     });
   }
+  
+  void _showProfileSwitcherDialog(UserSettings settings) {
+    settings.fixNulls();
+    final controller = TextEditingController();
+    final transactionBox = Hive.box<Transaction>('transactions');
 
-  void _addOrEditTransaction({Transaction? transaction, int? index}) {
+    showDialog(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          title: Text("Switch Profile"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...settings.profileList.map((profile) => ListTile(
+                title: Text(profile),
+                trailing: settings.activeProfile == profile
+                    ? Icon(Icons.check, color: Colors.green)
+                    : null,
+                onTap: () {
+                  settings.activeProfile = profile;
+                  settings.save();
+                  Navigator.pop(context);
+                  if (mounted) setState(() {});
+                },
+                onLongPress: () {
+                  if (profile == 'Main') return; // Prevent deleting default profile
+
+                  final hasTransactions = transactionBox.values
+                      .where((tx) => tx.profileName == profile)
+                      .isNotEmpty;
+
+                  showDialog(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: Text("Delete Profile"),
+                      content: Text(
+                        hasTransactions
+                            ? "This profile has transactions. Are you sure you want to delete '$profile'?"
+                            : "Are you sure you want to delete '$profile'?",
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text("Cancel"),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            final updatedProfiles = settings.profileList.where((p) => p != profile).toList();
+                            settings.profileList = updatedProfiles;
+
+                            if (settings.activeProfile == profile) {
+                              settings.activeProfile = 'Main';
+                            }
+
+                            settings.save();
+                            Navigator.pop(context); // Close confirm
+                            Navigator.pop(context); // Close profile dialog
+
+                            if (mounted) setState(() {});
+                          },
+                          child: Text("Delete", style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              )),
+              const Divider(),
+              TextField(
+                controller: controller,
+                decoration: InputDecoration(hintText: "New profile name"),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                final newProfile = controller.text.trim();
+                final exists = settings.profileList
+                    .map((p) => p.toLowerCase())
+                    .contains(newProfile.toLowerCase());
+
+                if (newProfile.isNotEmpty && !exists) {
+                  final updatedProfiles = [...settings.profileList, newProfile];
+                  settings.profileList = updatedProfiles;
+                  settings.activeProfile = newProfile;
+                  settings.save(); // ✅ Required
+                  controller.clear(); // Optional: reset text field
+                  setStateDialog(() {}); // ✅ make dialog refresh its list
+                }
+              },
+              child: Text("Add"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+  void _addOrEditTransaction({Transaction? transaction, int? index, bool? isIncomePreset}) {
     final titleController = TextEditingController(text: transaction?.title ?? '');
     final amountController =
         TextEditingController(text: transaction != null ? transaction.amount.toString() : '');
     final settings = settingsBox.get('user') ?? UserSettings();
+    settings.fixNulls();
+    final activeProfile = settings.activeProfile;
     final dateFormat = settings.dateTimeFormat.isNotEmpty ? settings.dateTimeFormat : 'dd MMM yy';
     DateTime selectedDate = transaction?.date ?? DateTime.now();
     String category = transaction?.category ?? "General";
-    bool isIncome = transaction?.isIncome ?? false;
+    final isEditing = transaction != null;
+    bool isIncome = isEditing
+        ? transaction!.isIncome
+        : (isIncomePreset ?? false); // respect preset for adding only
 
     final allCategories = [...defaultCategories, ...customCategories];
 
@@ -181,15 +285,6 @@ class _FinancePageState extends State<FinancePage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    controller: titleController,
-                    decoration: InputDecoration(hintText: "Enter title"),
-                  ),
-                  TextField(
-                    controller: amountController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(hintText: "Enter amount"),
-                  ),
                   DropdownButton<String>(
                     value: category,
                     onChanged: (newValue) {
@@ -201,6 +296,18 @@ class _FinancePageState extends State<FinancePage> {
                         .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
                         .toList(),
                   ),
+                  const SizedBox(height: 8),
+
+                  TextField(
+                    controller: titleController,
+                    decoration: InputDecoration(hintText: "Enter title"),
+                  ),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(hintText: "Enter amount"),
+                  ),
+                  if (isEditing)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
@@ -252,50 +359,34 @@ class _FinancePageState extends State<FinancePage> {
                 ),
               TextButton(
                 onPressed: () {
-                  if (titleController.text.isNotEmpty &&
-                      amountController.text.isNotEmpty) {
+                  if (amountController.text.isNotEmpty) {
+                    String finalTitle = titleController.text.trim().isEmpty ? category : titleController.text.trim();
                     final newTx = Transaction(
-                      title: titleController.text,
+                      title: finalTitle,
                       amount: double.tryParse(amountController.text) ?? 0.0,
                       date: selectedDate,
                       category: category,
                       isIncome: isIncome,
+                      profileName: activeProfile,
                     );
 
-                    if (transaction != null && index != null) {
+                    if (isEditing && index != null) {
                       transactionBox.putAt(index, newTx);
                     } else {
                       transactionBox.add(newTx);
                       showTransactionFeedback(newTx.amount, newTx.isIncome);
                     }
 
-                    if (!isIncome) {
-                      final settings = settingsBox.get('user')!;
-                      final categoryTotal = transactionBox.values
-                          .where((t) => !t.isIncome && t.category == category)
-                          .fold<double>(0.0, (sum, t) => sum + t.amount);
-                      final limit = settings.spendingLimits[category] ?? double.infinity;
-                      if (categoryTotal > limit) {
-                        showDialog(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            title: Text("Limit Exceeded"),
-                            content: Text("You have exceeded the limit for $category!"),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: Text("Okay"),
-                              )
-                            ],
-                          ),
-                        );
-                      }
-                    }
-
                     Navigator.of(context).pop();
                   }
                 },
-                child: Text(transaction == null ? "Add" : "Save"),
+                style: TextButton.styleFrom(
+                  backgroundColor: isIncome ? Colors.green : Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: Text(isEditing ? "Save" : "Add"),
               )
             ],
           );
@@ -304,32 +395,36 @@ class _FinancePageState extends State<FinancePage> {
     );
   }
 
-  double calculateBalance(List<Transaction> transactions) {
+  double calculateBalance(List<Transaction> transactions, String profileName) {
     double balance = 0.0;
     for (var tx in transactions) {
-      balance += tx.isIncome ? tx.amount : -tx.amount;
+      if (tx.profileName == profileName) {
+        balance += tx.isIncome ? tx.amount : -tx.amount;
+      }
     }
     return balance;
   }
 
   @override
   Widget build(BuildContext context) {
+    final settings = settingsBox.get('user') ?? UserSettings();
+    settings.fixNulls();
+    final activeProfile = settings.activeProfile;
+    final dateFormat = settings.dateTimeFormat.isNotEmpty ? settings.dateTimeFormat : 'dd MMM yy';
+    final currency = settings.currency.isNotEmpty ? settings.currency : '\$';
+
     return ValueListenableBuilder<Box<Transaction>>(
       valueListenable: transactionBox.listenable(),
       builder: (context, box, _) {
-        final settings = settingsBox.get('user') ?? UserSettings();
-        final dateFormat = settings.dateTimeFormat.isNotEmpty ? settings.dateTimeFormat : 'dd MMM yy';
-        final currency = settings.currency.isNotEmpty ? settings.currency : '\$';
-        final limits = settings.spendingLimits;
         final allTransactions = box.values.toList();
-        final balance = calculateBalance(allTransactions);
+        final balance = calculateBalance(allTransactions, activeProfile);
 
-        // Transactions to show for selected date and filtered categories
         final transactions = box.values.where((tx) {
           final isSameDate = DateFormat('yyyy-MM-dd').format(tx.date) ==
               DateFormat('yyyy-MM-dd').format(selectedDate);
           final isInSelectedCategory = selectedCategories.isEmpty || selectedCategories.contains(tx.category);
-          return (showTotalBalance || isSameDate) && isInSelectedCategory;
+          final isInActiveProfile = tx.profileName == activeProfile;
+          return (showTotalBalance || isSameDate) && isInSelectedCategory && isInActiveProfile;
         }).toList();
 
         final categoryTotals = <String, double>{};
@@ -343,9 +438,49 @@ class _FinancePageState extends State<FinancePage> {
           appBar: AppBar(
             title: Text("Finance"),
             actions: [
-              IconButton(
-                icon: Icon(Icons.category),
-                onPressed: _addCustomCategoryDialog,
+              Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Tooltip(
+                      message: "Toggle between today's transactions and total balance",
+                      child: ToggleButtons(
+                        isSelected: [!showTotalBalance, showTotalBalance],
+                        onPressed: (index) {
+                          setState(() => showTotalBalance = index == 1);
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        selectedColor: Colors.white,
+                        fillColor: Colors.deepPurple,
+                        splashColor: Colors.deepPurpleAccent.withOpacity(0.2),
+                        selectedBorderColor: Colors.deepPurple,
+                        borderColor: Colors.transparent,
+                        borderWidth: 0.8,
+                        constraints: BoxConstraints(minWidth: 48, minHeight: 36),
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            child: Text("Today", style: TextStyle(fontSize: 14)),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            child: Text("Total", style: TextStyle(fontSize: 14)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.settings_outlined),
+                    tooltip: "Switch Profile",
+                    onPressed: () => _showProfileSwitcherDialog(settings),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.category),
+                    tooltip: "Add Custom Category",
+                    onPressed: _addCustomCategoryDialog,
+                  ),
+                ],
               ),
             ],
           ),
@@ -367,10 +502,7 @@ class _FinancePageState extends State<FinancePage> {
                           },
                           child: Row(
                             children: [
-                              Text(
-                                "Balance: ",
-                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
-                              ),
+                              Text("Balance (${activeProfile}):", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500)),
                               Text(
                                 settings.hideBalance && !isBalanceVisible
                                     ? "$currency••••••"
@@ -383,30 +515,13 @@ class _FinancePageState extends State<FinancePage> {
                               ),
                               const SizedBox(width: 6),
                               Icon(
-                                settings.hideBalance && !isBalanceVisible
-                                    ? Icons.lock
-                                    : Icons.lock_open,
+                                settings.hideBalance && !isBalanceVisible ? Icons.lock : Icons.lock_open,
                                 size: 18,
-                                color: settings.hideBalance && !isBalanceVisible
-                                    ? Colors.grey
-                                    : Colors.green,
+                                color: settings.hideBalance && !isBalanceVisible ? Colors.grey : Colors.green,
                               ),
+                              const SizedBox(width: 10),
                             ],
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            Text("Today"),
-                            Switch(
-                              value: showTotalBalance,
-                              onChanged: (val) {
-                                setState(() {
-                                  showTotalBalance = val;
-                                });
-                              },
-                            ),
-                            Text("Total"),
-                          ],
+                          )
                         ),
                       ],
                     ),
@@ -630,9 +745,43 @@ class _FinancePageState extends State<FinancePage> {
               ),
             ],
           ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: () => _addOrEditTransaction(),
-            child: Icon(Icons.add),
+          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+          floatingActionButton: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _addOrEditTransaction(isIncomePreset: true),
+                    icon: Icon(Icons.arrow_upward, color: Colors.white),
+                    label: Text("Add Income"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      elevation: 4,
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _addOrEditTransaction(isIncomePreset: false),
+                    icon: Icon(Icons.arrow_downward, color: Colors.white),
+                    label: Text("Add Spending"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      elevation: 4,
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },

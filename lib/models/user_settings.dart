@@ -35,13 +35,29 @@ class UserSettings extends HiveObject {
   DateTime? lastTaskCompletedAt;
 
   @HiveField(10)
-  List<String> customCategories; // 🆕 Custom user-defined categories
+  List<String> customCategories;
 
   @HiveField(11)
-  Map<String, double> spendingLimits; // 🆕 Category spending limits
+  Map<String, double> spendingLimits;
 
   @HiveField(12)
-  bool hideBalance; // 🆕 Hide balance with passcode/biometric
+  bool hideBalance;
+
+  @HiveField(13)
+  List<String> profileList; // NEW: List of user-defined financial profiles
+
+  @HiveField(14)
+  String activeProfile; // NEW: Currently selected profile name
+  
+  void fixNulls() {
+    currency = currency.isNotEmpty ? currency : '\$';
+    dateTimeFormat = dateTimeFormat.isNotEmpty ? dateTimeFormat : 'dd MMM yy';
+    customCategories = customCategories ?? [];
+    spendingLimits = spendingLimits ?? {};
+    profileList = profileList == null || profileList.isEmpty ? ['Main'] : profileList;
+    activeProfile = activeProfile == null || activeProfile.isEmpty ? 'Main' : activeProfile;
+    hideBalance = hideBalance ?? false;
+  }
 
   UserSettings({
     this.name = '',
@@ -56,6 +72,8 @@ class UserSettings extends HiveObject {
     this.lastTaskCompletedAt,
     this.customCategories = const [],
     this.spendingLimits = const {},
-    this.hideBalance = false, // default value
+    this.hideBalance = false,
+    this.profileList = const ['Main'], // Default profile list
+    this.activeProfile = 'Main',       // Default active profile
   });
 }

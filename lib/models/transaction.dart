@@ -19,11 +19,15 @@ class Transaction extends HiveObject {
   @HiveField(4)
   bool isIncome;
 
+  @HiveField(5)
+  String profileName; // NEW FIELD for balance profile
+
   Transaction({
     required this.title,
     required this.amount,
     required this.date,
     required this.category,
     required this.isIncome,
+    this.profileName = "Main", // Default to "Main" profile
   });
 }
